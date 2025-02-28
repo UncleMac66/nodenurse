@@ -68,14 +68,14 @@ generate_ocid() {
 display_nodes() {
     echo "----------------------" $start_timestamp "---------------------"
     echo "----------------------------------------------------------------"
-    echo -e "Down Hosts:"
+    echo -e "Hosts:"
     echo " " 
     if [ -z "$nodes" ];then
       echo "There are no hosts that are showing as down in sinfo"
       echo "exiting..."
       exit 1
     fi
-    # Loop through each node and get it's instance name
+    # Loop through each node and get its instance name
     for n in $nodes
     do
       inst=`generate_instance_name $n`
@@ -107,10 +107,17 @@ if [ $ntype == healthonly ]; then
     if [ $(echo $nodes | wc -w) -gt 1 ];then
       echo "Would you like to run ncclscout on these nodes?"
       read response
+      echo " "
       case $response in
         yes|Yes|YES|y|Y)
           echo "Proceeding..."
           echo " "
+	  for i in $nodes
+	  do
+		  echo $i >> $date-hostfile
+	  done
+	  python3 ncclscout.py $date-hostfile
+	  rm $date-hostfile
         ;;
         no|No|NO|n|N)
       	exit 1
@@ -145,14 +152,15 @@ if [ $ntype == rebootall ]; then
 	  echo -e "Instance Name: $inst"
 	  echo -e "OCID: $ocid"
 	  echo " " 
-          oci compute instance action --instance-id $ocid --action RESET --auth instance_principal >> $date-nodenurse.log || reboot=false	
+
+          # oci compute instance action --instance-id $ocid --action RESET --auth instance_principal >> $date-nodenurse.log || reboot=false	
 	  if [ $reboot == false ];
 	  then
             echo " "
             echo -e "${RED}Reset command failed!${NC}" 
 	    echo " "
 	  else 
-	    echo -e "$date - ${GREEN}Success${NC} - Hard reset command sent to node ${YELLOW}$n${NC}"
+		  echo -e "$(date) - ${GREEN}Success${NC} - Hard reset command sent to node ${YELLOW}$n${NC}" | tee -a $date-nodenurse.log
 	  fi
 	  echo "----------------------------------------------------------------"
 	  echo " "
