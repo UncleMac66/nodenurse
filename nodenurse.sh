@@ -21,10 +21,15 @@ if [[ $1 == "healthcheck" || $1 == "health" || $1 == "-h" || $1 == "h" ]];
 fi
 
 # If a second argument is passed, assume its a nodename or a hostfile. If no second argument is passed grab the list of nodes in a down state in slurm
-if [ -n "$2" ]; then
-   nodes="$2"
-   else
+if [ -f "$2" ]; then
+   # arg is a hostfile
+   nodes=($(cat "$2"))
+elif [ -z "$2" ]; then
+   # no argument provided so pull from sinfo
    nodes=$(sinfo -N | grep down | awk '{print $1}' | sort -u)
+else
+   # arg is a single hostname
+   nodes="$2"
 fi
 
 # Initialize colors
