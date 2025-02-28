@@ -160,7 +160,7 @@ if [ $ntype == rebootall ]; then
             echo -e "${RED}Reset command failed!${NC}" 
 	    echo " "
 	  else 
-		  echo -e "$(date) - ${GREEN}Success${NC} - Hard reset command sent to node ${YELLOW}$n${NC}" | tee -a $date-nodenurse.log
+	    echo -e "$(date) - ${GREEN}Success${NC} - Hard reset command sent to node ${YELLOW}$n${NC}" | tee -a $date-nodenurse.log
 	  fi
 	  echo "----------------------------------------------------------------"
 	  echo " "
