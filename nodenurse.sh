@@ -32,7 +32,7 @@ if [ -f "$2" ]; then
     done
 elif [ -z "$2" ]; then
     # no argument provided so pull from sinfo
-    nodes=$((sinfo -N | grep down && sinfo -N | grep drain) | awk '{print $1}' | sort -u)
+    nodes=$(sinfo -N | grep -E "down|drain" | awk '{print $1}' | sort -u)
 else
     # arg is a single hostname
     nodes="$2"
