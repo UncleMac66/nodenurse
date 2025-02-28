@@ -2,9 +2,9 @@
 
 # Check if an argument is passed
 if [ -z "$1" ]; then
-    echo -e "Usage: $0 -h [Run healthchecks on node(s)] | -r [Hard reset node(s)] | -i [Identify nodes] | <hostname, hostfile, or leave blank to pull down hosts from sinfo>"
+    echo -e "Usage: $0 | -h [Run healthchecks on node(s)] | -r [Hard reset node(s)] | -i [Identify nodes] | <hostname, hostfile, or leave blank to pull down hosts from sinfo>"
     echo ""
-    echo "$0 takes the nodes that are in a down state in slurm or a supplied nodename or hostfile and either runs a fresh healthcheck on them or can be used to initiate a hard reboot of those nodes"
+    echo "$0 takes the nodes that are in a down/drain state in slurm or a supplied nodename or hostfile and either runs a fresh healthcheck on them or can be used to initiate a hard reboot of those nodes"
     exit 1
 fi
 
@@ -32,7 +32,7 @@ if [ -f "$2" ]; then
     done
 elif [ -z "$2" ]; then
     # no argument provided so pull from sinfo
-    nodes=$(sinfo -N | grep down | awk '{print $1}' | sort -u)
+    nodes=$((sinfo -N | grep down && sinfo -N | grep drain) | awk '{print $1}' | sort -u)
 else
     # arg is a single hostname
     nodes="$2"
@@ -65,7 +65,7 @@ generate_ocid() {
     echo $inputocid
 }
 
-# Function displays the list of 'Down Hosts' along with with instance names and OCIDs
+# Function displays the list of 'Down/drain Hosts' along with with instance names and OCIDs
 display_nodes() {
     echo "----------------------" $start_timestamp "---------------------"
     echo "----------------------------------------------------------------"
@@ -115,10 +115,10 @@ if [ $ntype == healthonly ]; then
           echo " "
 	  for i in $nodes
 	  do
-		  echo $i >> $date-hostfile
+		  echo $i >> $date-hostfile.tmp
 	  done
-	  python3 ncclscout.py $date-hostfile
-	  rm $date-hostfile
+	  python3 ncclscout.py $date-hostfile.tmp
+	  rm $date-hostfile.tmp
         ;;
         no|No|NO|n|N)
       	exit 1
@@ -153,8 +153,7 @@ if [ $ntype == rebootall ]; then
 	  echo -e "Instance Name: $inst"
 	  echo -e "OCID: $ocid"
 	  echo " " 
-
-          # oci compute instance action --instance-id $ocid --action RESET --auth instance_principal >> $date-nodenurse.log || reboot=false	
+          oci compute instance action --instance-id $ocid --action RESET --auth instance_principal >> $date-nodenurse.log || reboot=false	
 	  if [ $reboot == false ];
 	  then
             echo " "
