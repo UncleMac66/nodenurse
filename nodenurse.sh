@@ -2,9 +2,9 @@
 
 # Check if an argument is passed
 if [ -z "$1" ]; then
-    echo "Usage: $0 healthcheck | reboot | <host or leave blank to pull down hosts from sinfo>"
+    echo "Usage: $0 healthcheck | reboot | <hostname, hostfile, or leave blank to pull down hosts from sinfo>"
     echo ""
-    echo "$0 takes the nodes that are in a down state in slurm or a supplied nodename and either runs a fresh healthcheck on them or can be used to initiate a hard reboot of those nodes"
+    echo "$0 takes the nodes that are in a down state in slurm or a supplied nodename or hostfile and either runs a fresh healthcheck on them or can be used to initiate a hard reboot of those nodes"
     exit 1
 fi
 
@@ -23,7 +23,10 @@ fi
 # If a second argument is passed, assume its a nodename or a hostfile. If no second argument is passed grab the list of nodes in a down state in slurm
 if [ -f "$2" ]; then
    # arg is a hostfile
-   nodes=($(cat "$2"))
+   for i in $(cat "$2")
+   do
+     nodes+="$i "
+   done
 elif [ -z "$2" ]; then
    # no argument provided so pull from sinfo
    nodes=$(sinfo -N | grep down | awk '{print $1}' | sort -u)
