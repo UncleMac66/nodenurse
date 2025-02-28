@@ -10,29 +10,29 @@ fi
 
 # Check first argument to grab function or exit if no valid option is provided
 if [[ $1 == "healthcheck" || $1 == "health" || $1 == "-h" || $1 == "h" ]]; 
-   then
+    then
       ntype=healthonly
-   elif [[ $1 == "reboot" || $1 == "-r" || $1 == "r" ]]; 
-   then
+    elif [[ $1 == "reboot" || $1 == "-r" || $1 == "r" ]]; 
+    then
       ntype=rebootall
-   else
-      echo "Unknown argument. Please try again"
-      exit 1
+    else
+       echo "Unknown argument. Please try again"
+       exit 1
 fi
 
 # If a second argument is passed, assume its a nodename or a hostfile. If no second argument is passed grab the list of nodes in a down state in slurm
 if [ -f "$2" ]; then
-   # arg is a hostfile
-   for i in $(cat "$2")
-   do
-     nodes+="$i "
-   done
+    # arg is a hostfile
+    for i in $(cat "$2")
+    do
+      nodes+="$i "
+    done
 elif [ -z "$2" ]; then
-   # no argument provided so pull from sinfo
-   nodes=$(sinfo -N | grep down | awk '{print $1}' | sort -u)
+    # no argument provided so pull from sinfo
+    nodes=$(sinfo -N | grep down | awk '{print $1}' | sort -u)
 else
-   # arg is a single hostname
-   nodes="$2"
+    # arg is a single hostname
+    nodes="$2"
 fi
 
 # Initialize colors
@@ -51,14 +51,14 @@ reboot=true
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's instance name in the OCI console
 generate_instance_name() {
-	inst=`cat /etc/hosts | grep "$1 " | grep .local.vcn | awk '{print $4}'`
-	echo $inst
+    inst=`cat /etc/hosts | grep "$1 " | grep .local.vcn | awk '{print $4}'`
+    echo $inst
 }
 
 # Function takes in an instance name and returns it's OCID
 generate_ocid() {
-	inputocid=`oci compute instance list --compartment-id $compartmentid --display-name $1 --auth instance_principal | jq -r .data[0].id`
-	echo $inputocid
+    inputocid=`oci compute instance list --compartment-id $compartmentid --display-name $1 --auth instance_principal | jq -r .data[0].id`
+    echo $inputocid
 }
 
 # Function displays the list of 'Down Hosts' along with with instance names and OCIDs
@@ -75,10 +75,10 @@ display_nodes() {
     # Loop through each node and get it's instance name
     for n in $nodes
     do
-	inst=`generate_instance_name $n`
-	ocid=`generate_ocid $inst`
-	echo -e " ${RED}$n${NC} <-> $inst <-> $ocid"
-	echo " "
+      inst=`generate_instance_name $n`
+      ocid=`generate_ocid $inst`
+      echo -e " ${RED}$n${NC} <-> $inst <-> $ocid"
+      echo " "
     done	
 }
 
@@ -90,11 +90,11 @@ if [ $ntype == healthonly ]; then
     # Loop through each node and grab the healthcheck
     for n in $nodes
     do
-        echo "----------------------------------------------------------------" 
-        echo -e "Healthcheck from node: ${RED}$n${NC} "
-        echo "----------------------------------------------------------------" 
-	ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || echo "Failed to connect to $n"
-	echo " " 
+      echo "----------------------------------------------------------------" 
+      echo -e "Healthcheck from node: ${RED}$n${NC} "
+      echo "----------------------------------------------------------------" 
+      ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || echo "Failed to connect to $n"
+      echo " " 
     done
 fi
 
