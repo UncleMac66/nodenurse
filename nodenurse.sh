@@ -51,6 +51,7 @@ start_timestamp=`date -u +'%F %T'`
 # Initialize global variables
 compartmentid=$(cat /opt/oci-hpc/conf/queues.conf | grep targetCompartment: | sort -u | awk '{print $2}')
 reboot=true
+numnodes=$(echo $nodes | wc -w) 
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's instance name in the OCI console
 generate_instance_name() {
@@ -68,7 +69,7 @@ generate_ocid() {
 display_nodes() {
     echo "----------------------" $start_timestamp "---------------------"
     echo "----------------------------------------------------------------"
-    echo -e "Hosts:"
+    echo -e "$numnodes Host(s):"
     echo " " 
     if [ -z "$nodes" ];then
       echo "There are no hosts that are showing as down in sinfo"
@@ -104,7 +105,7 @@ if [ $ntype == healthonly ]; then
       ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || echo "Failed to connect to $n"
       echo " " 
     done
-    if [ $(echo $nodes | wc -w) -gt 1 ];then
+    if [ $numnodes -gt 1 ];then
       echo "Would you like to run ncclscout on these nodes?"
       read response
       echo " "
