@@ -8,6 +8,7 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
+# Check first argument to grab function or exit if no valid option is provided
 if [[ $1 == "healthcheck" || $1 == "health" || $1 == "-h" || $1 == "h" ]]; 
    then
       ntype=healthonly
@@ -16,36 +17,44 @@ if [[ $1 == "healthcheck" || $1 == "health" || $1 == "-h" || $1 == "h" ]];
       ntype=rebootall
    else
       echo "Unknown argument. Please try again"
-   exit 1
+      exit 1
 fi
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-NC='\033[0m' # No Color
-
-date=`date -u '+%Y%m%d%H%M'`
-start_timestamp=`date -u +'%F %T'`
-
+# If a second argument is passed, assume its a nodename or a hostfile. If no second argument is passed grab the list of nodes in a down state in slurm
 if [ -n "$2" ]; then
    nodes="$2"
    else
    nodes=$(sinfo -N | grep down | awk '{print $1}' | sort -u)
 fi
 
-compartmentid=$(cat /opt/oci-hpc/conf/queues.conf | grep targetCompartment: | sort -u | awk '{print $2}')
+# Initialize colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
 
+# Initialize Dates
+date=`date -u '+%Y%m%d%H%M'`
+start_timestamp=`date -u +'%F %T'`
+
+# Initialize global variables
+compartmentid=$(cat /opt/oci-hpc/conf/queues.conf | grep targetCompartment: | sort -u | awk '{print $2}')
+reboot=true
+
+# Function takes in a hostname (e.g. gpu-123) and returns it's instance name in the OCI console
 generate_instance_name() {
 	inst=`cat /etc/hosts | grep "$1 " | grep .local.vcn | awk '{print $4}'`
 	echo $inst
 }
 
+# Function takes in an instance name and returns it's OCID
 generate_ocid() {
 	inputocid=`oci compute instance list --compartment-id $compartmentid --display-name $1 --auth instance_principal | jq -r .data[0].id`
 	echo $inputocid
 }
 
-if [ $ntype == healthonly ]; then
+# Function displays the list of 'Down Hosts' along with with instance names and OCIDs
+display_nodes() {
     echo "----------------------" $start_timestamp "---------------------"
     echo "----------------------------------------------------------------"
     echo -e "Down Hosts:"
@@ -55,7 +64,6 @@ if [ $ntype == healthonly ]; then
       echo "exiting..."
       exit 1
     fi
-
     # Loop through each node and get it's instance name
     for n in $nodes
     do
@@ -64,6 +72,12 @@ if [ $ntype == healthonly ]; then
 	echo -e " ${RED}$n${NC} <-> $inst <-> $ocid"
 	echo " "
     done	
+}
+
+
+if [ $ntype == healthonly ]; then
+
+    display_nodes
 
     # Loop through each node and grab the healthcheck
     for n in $nodes
@@ -77,27 +91,8 @@ if [ $ntype == healthonly ]; then
 fi
 
 if [ $ntype == rebootall ]; then
- 
-    echo "----------------------" $start_timestamp "---------------------"
-    echo "----------------------------------------------------------------"
-    echo -e "Down Hosts:"
-    echo " " 
-    if [ -z "$nodes" ];then
-      echo "There are no hosts that are showing as down in sinfo"
-      echo "exiting..."
-      exit 1
-    fi
 
-    # Loop through each node and get it's instance name
-    for n in $nodes
-    do
-	inst=`generate_instance_name $n`
-	ocid=`generate_ocid $inst`
-	echo -e " ${RED}$n${NC} <-> $inst <-> $ocid"
-	echo " "
-    done	
-
-    echo "----------------------------------------------------------------" 
+    display_nodes
 
     # ask for confirmation before reboot
     echo "Are you sure you want to hard reboot these nodes? (yes/no)"
@@ -117,15 +112,14 @@ if [ $ntype == rebootall ]; then
 	  echo -e "Instance Name: $inst"
 	  echo -e "OCID: $ocid"
 	  echo " " 
-          oci compute instance action --instance-id $ocid --action RESET --auth instance_principal || reboot=false	
+          oci compute instance action --instance-id $ocid --action RESET --auth instance_principal >> $date-nodenurse.log || reboot=false	
 	  if [ $reboot == false ];
 	  then
             echo " "
             echo -e "${RED}Reset command failed!${NC}" 
-	    exit 1
 	    echo " "
 	  else 
-	    echo -e "${GREEN}Success${NC} - Hard reset command sent to node ${RED}$n${NC}" 
+	    echo -e "$date - ${GREEN}Success${NC} - Hard reset command sent to node ${YELLOW}$n${NC}"
 	  fi
 	  echo "----------------------------------------------------------------"
 	  echo " "
