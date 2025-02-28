@@ -2,19 +2,22 @@
 
 # Check if an argument is passed
 if [ -z "$1" ]; then
-    echo "Usage: $0 healthcheck | reboot | <hostname, hostfile, or leave blank to pull down hosts from sinfo>"
+    echo -e "Usage: $0 -h [Run healthchecks on node(s)] | -r [Hard reset node(s)] | -i [Identify nodes] | <hostname, hostfile, or leave blank to pull down hosts from sinfo>"
     echo ""
     echo "$0 takes the nodes that are in a down state in slurm or a supplied nodename or hostfile and either runs a fresh healthcheck on them or can be used to initiate a hard reboot of those nodes"
     exit 1
 fi
 
 # Check first argument to grab function or exit if no valid option is provided
-if [[ $1 == "healthcheck" || $1 == "health" || $1 == "-h" || $1 == "h" ]]; 
+if [[ $1 == "-h" ]]; 
     then
       ntype=healthonly
-    elif [[ $1 == "reboot" || $1 == "-r" || $1 == "r" ]]; 
+    elif [[ $1 == "-r" ]]; 
     then
       ntype=rebootall
+    elif [[ $1 == "-i" ]];
+    then
+      ntype=idnodes
     else
        echo "Unknown argument. Please try again"
        exit 1
@@ -82,6 +85,11 @@ display_nodes() {
     done	
 }
 
+if [ $ntype == idnodes ]; then
+
+    display_nodes
+
+fi
 
 if [ $ntype == healthonly ]; then
 
@@ -96,6 +104,23 @@ if [ $ntype == healthonly ]; then
       ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || echo "Failed to connect to $n"
       echo " " 
     done
+    if [ $(echo $nodes | wc -w) -gt 1 ];then
+      echo "Would you like to run ncclscout on these nodes?"
+      read response
+      case $response in
+        yes|Yes|YES|y|Y)
+          echo "Proceeding..."
+          echo " "
+        ;;
+        no|No|NO|n|N)
+      	exit 1
+      ;;
+        *)
+          echo "Invalid input. Please enter yes or no."
+        ;;
+      esac
+    fi
+
 fi
 
 if [ $ntype == rebootall ]; then
@@ -103,7 +128,7 @@ if [ $ntype == rebootall ]; then
     display_nodes
 
     # ask for confirmation before reboot
-    echo "Are you sure you want to hard reboot these nodes? (yes/no)"
+    echo -e "Are you sure you want to hard reboot these nodes? (yes/no)"
     read response
     echo " " 
     case $response in
