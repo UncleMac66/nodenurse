@@ -66,9 +66,12 @@ generate_ocid() {
 
 # Function displays the list of 'Down/drain Hosts' along with with instance names and OCIDs
 display_nodes() {
+    
     echo "----------------------" $start_timestamp "---------------------"
     echo "----------------------------------------------------------------"
-    echo -e "$numnodes Host(s):"
+#    echo -e "$numnodes Host(s):"
+    echo "Hostname    | Instance Name        | OCID"
+    echo "---"
     echo " " 
     if [ -z "$nodes" ];then
       echo "There are no hosts that are showing as down in sinfo"
@@ -79,8 +82,9 @@ display_nodes() {
     for n in $nodes
     do
       inst=`generate_instance_name $n`
-      ocid=`generate_ocid $inst`
-      echo -e " ${RED}$n${NC} <-> $inst <-> $ocid"
+   #   ocid=`generate_ocid $inst`
+   #   echo -e " ${RED}$n${NC} <-> $inst <-> $ocid"
+      echo -e " ${RED}$n${NC} <-> $inst 
       echo " "
     done	
 }
