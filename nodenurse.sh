@@ -9,18 +9,17 @@ if [ -z "$1" ]; then
 fi
 
 # Check first argument to grab function or exit if no valid option is provided
-if [[ $1 == "-h" ]]; 
-    then
-      ntype=healthonly
-    elif [[ $1 == "-r" ]]; 
-    then
-      ntype=rebootall
-    elif [[ $1 == "-i" ]];
-    then
-      ntype=idnodes
-    else
-       echo "Unknown argument. Please try again"
-       exit 1
+if [[ $1 == "-h" ]] or [[ $1 == "-f" ]]; then
+    ntype=healthfresh
+elif [[ $1 == "-l" ]] || [[ $1 == "-hl" ]]; then
+    ntype=healthlatest
+elif [[ $1 == "-r" ]]; then
+    ntype=rebootall
+elif [[ $1 == "-i" ]]; then
+    ntype=idnodes
+else
+    echo "Unknown argument. Please try again"
+    exit 1
 fi
 
 # If a second argument is passed, assume its a nodename or a hostfile. If no second argument is passed grab the list of nodes in a down state in slurm
@@ -92,21 +91,29 @@ if [ $ntype == idnodes ]; then
 
 fi
 
-if [ $ntype == healthonly ]; then
+if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
+    currentnumnodes=1
     display_nodes
 
     # Loop through each node and grab the healthcheck
     for n in $nodes
     do
       echo "----------------------------------------------------------------" 
-      echo -e "Healthcheck from node: ${RED}$n${NC} "
+      echo -e "Healthcheck from node: ${YELLOW}$n${NC} -- Node $currentnumnodes / $numnodes"
       echo "----------------------------------------------------------------" 
-      ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || echo "Failed to connect to $n"
+      if [[ $ntype == healthfresh ]]; then
+        ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || echo "Failed to connect to $n"
+      else
+        ssh "$n" "cat /tmp/latest_healthcheck.log" || echo "Can't find the latest healthcheck. Are healthchecks enabled on this cluster?"
+      fi
       echo " " 
+      let currentnumnodes++
     done
+
+    # Offer to run ncclscout if number of node is greater than 1
     if [ $numnodes -gt 1 ];then
-      echo "Would you like to run ncclscout on these nodes?"
+      echo "Would you like to run ncclscout on these $numnodes nodes?"
       read response
       echo " "
       case $response in
@@ -115,7 +122,7 @@ if [ $ntype == healthonly ]; then
           echo " "
 	  for i in $nodes
 	  do
-		  echo $i >> $date-hostfile.tmp
+	    echo $i >> $date-hostfile.tmp
 	  done
 	  python3 ncclscout.py $date-hostfile.tmp
 	  rm $date-hostfile.tmp
