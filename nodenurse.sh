@@ -16,7 +16,6 @@ if [ -z "$1" ]; then
     echo " "
     echo -e "$0 -l -> grabs the latest healthchecks from nodes marked as drain or down in slurm"
     echo " " 
-
     exit 1
 fi
 
@@ -91,6 +90,10 @@ generate_slurm_state() {
     echo $outputstate
 }
 
+generate_serial() {
+    outputserial=`ssh $1 "sudo dmidecode -s system-serial-number"`
+    echo $outputserial
+}
 
 # Function displays the list of 'Down/drain Hosts' along with with instance names and OCIDs
 display_nodes() {
@@ -99,7 +102,7 @@ display_nodes() {
     echo "----------------------" $start_timestamp "---------------------"
     echo "----------------------------------------------------------------"
     echo " " 
-    printf "%-13s %-35s %-13s\n" "Hostname" "Instance Name" "Slurm State"
+    printf "%-13s %-30s %-13s %-13s\n" "Hostname" "Instance Name" "Host Serial #" "Slurm State"
     echo " " 
     if [ -z "$nodes" ];then
       echo "There are no hosts that are showing as down/drain in sinfo"
@@ -113,10 +116,11 @@ display_nodes() {
     do
       inst=`generate_instance_name $n`
       state=`generate_slurm_state $n`
+      serial=`generate_serial $n`
       if [[ $state =~ "mix" ]] || [[ $state =~ "alloc" ]]; then
         allocstate=true
       fi
-      printf "%-13s %-35s %-13s\n" "$n" "$inst" "$state"
+      printf "%-13s %-35s %-13s %-13s\n" "$n" "$inst" "$serial" "$state"
       echo " "
     done	
 
