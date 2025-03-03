@@ -2,9 +2,21 @@
 
 # Check if an argument is passed
 if [ -z "$1" ]; then
-    echo -e "Usage: $0 | -h [Run healthchecks on node(s)] | -r [Hard reset node(s)] | -i [Identify nodes] | <hostname, hostfile, or leave blank to pull down hosts from sinfo>"
+    echo " "
+    echo -e "Usage: $0 | -h [Run fresh healthchecks on node(s)] | -l [Get the latest healthcheck from the node(s)] | -r [Hard reset node(s)] | -i [Identify nodes] | <hostname, hostfile, or leave blank to pull down hosts from sinfo>"
     echo ""
-    echo "$0 takes the nodes that are in a down/drain state in slurm or a supplied nodename or hostfile and either runs a fresh healthcheck on them or can be used to initiate a hard reboot of those nodes"
+    echo "$0 takes the nodes that are in a down/drain state in slurm or a supplied nodename or hostfile and can run a fresh healthcheck on them, grab the latest healthcheck, send them through ncclscout.py, or can be used to initiate a hard reboot of those nodes."
+    echo " " 
+    echo "Syntax: $0 [command [host(s)]]"
+    echo " " 
+    echo "For example:"
+    echo "$0 -h <path to hostfile> -> runs a fresh healthcheck on the nodes in the provided hostlist"
+    echo " "
+    echo -e "$0 -r gpu-123 -> sends a hard reboot signal to node \'gpu-123\'"
+    echo " "
+    echo -e "$0 -l -> grabs the latest healthchecks from nodes marked as drain or down in slurm"
+    echo " " 
+
     exit 1
 fi
 
@@ -25,15 +37,24 @@ fi
 # If a second argument is passed, assume its a nodename or a hostfile. If no second argument is passed grab the list of nodes in a down state in slurm
 if [ -f "$2" ]; then
     # arg is a hostfile
+    echo " "
+    echo "Reading from provided hostfile..."
+    echo " " 
     for i in $(cat "$2")
     do
       nodes+="$i "
     done
 elif [ -z "$2" ]; then
     # no argument provided so pull from sinfo
+    echo " "
+    echo "No hostfile provided. Grabbing down/drain hosts from slurm..."
+    echo " " 
     nodes=$(sinfo -N | grep -E "down|drain" | awk '{print $1}' | sort -u)
 else
     # arg is a single hostname
+    echo " "
+    echo "Single hostname provided..."
+    echo " " 
     nodes="$2"
 fi
 
@@ -51,6 +72,7 @@ start_timestamp=`date -u +'%F %T'`
 compartmentid=$(cat /opt/oci-hpc/conf/queues.conf | grep targetCompartment: | sort -u | awk '{print $2}')
 reboot=true
 numnodes=$(echo $nodes | wc -w) 
+allocstate=false
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's instance name in the OCI console
 generate_instance_name() {
@@ -60,33 +82,73 @@ generate_instance_name() {
 
 # Function takes in an instance name and returns it's OCID
 generate_ocid() {
-    inputocid=`oci compute instance list --compartment-id $compartmentid --display-name $1 --auth instance_principal | jq -r .data[0].id`
-    echo $inputocid
+    outputocid=`oci compute instance list --compartment-id $compartmentid --display-name $1 --auth instance_principal | jq -r .data[0].id`
+    echo $outputocid
 }
+
+generate_slurm_state() {
+    outputstate=`sinfo -N | grep "$1 " | awk '{print $4}' | sort -u` 
+    echo $outputstate
+}
+
 
 # Function displays the list of 'Down/drain Hosts' along with with instance names and OCIDs
 display_nodes() {
     
+    echo "----------------------------------------------------------------"
     echo "----------------------" $start_timestamp "---------------------"
     echo "----------------------------------------------------------------"
-#    echo -e "$numnodes Host(s):"
-    echo "Hostname    | Instance Name        | OCID"
-    echo "---"
+    echo " " 
+    printf "%-13s %-35s %-13s\n" "Hostname" "Instance Name" "Slurm State"
     echo " " 
     if [ -z "$nodes" ];then
-      echo "There are no hosts that are showing as down in sinfo"
+      echo "There are no hosts that are showing as down/drain in sinfo"
+      echo " "
       echo "exiting..."
-      exit 1
+      exit 0
     fi
+
     # Loop through each node and get its instance name
     for n in $nodes
     do
       inst=`generate_instance_name $n`
-   #   ocid=`generate_ocid $inst`
-   #   echo -e " ${RED}$n${NC} <-> $inst <-> $ocid"
-      echo -e "${RED}$n${NC} <-> $inst "
+      state=`generate_slurm_state $n`
+      if [[ $state =~ "mix" ]] || [[ $state =~ "alloc" ]]; then
+        allocstate=true
+      fi
+      printf "%-13s %-35s %-13s\n" "$n" "$inst" "$state"
       echo " "
     done	
+
+    # Display total num of nodes
+    echo "Total: $numnodes Host(s)"
+    echo " "
+
+    # if any nodes are in alloc state then warn user
+    if [[ $allocstate == true ]]; then
+      echo -e "${RED}WARNING:${NC} There are hosts in an allocated state. Proceed with caution as rebooting nodes that are running jobs is ill-advised and can cause significant customer disruption" 
+      echo " "
+    fi
+
+    # if -i then exit cleanly
+    if [[ $ntype == idnodes ]]; then 
+      exit 0
+    fi
+    
+    # Prompt user if they want to continue
+    echo "Continue? (y/n)"
+    read response
+    case $response in 
+      yes|YES|Yes|y|Y)
+      ;;
+      no|NO|No|n|N)
+	exit 1
+      ;;	
+      *)
+        echo "Invalid input. Please enter yes or no."
+      ;;
+    esac
+    echo " " 
 }
 
 if [ $ntype == idnodes ]; then
@@ -117,7 +179,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
     # Offer to run ncclscout if number of node is greater than 1
     if [ $numnodes -gt 1 ];then
-      echo "Would you like to run ncclscout on these $numnodes nodes?"
+      echo "Would you like to run ncclscout on these $numnodes nodes? (y/n)"
       read response
       echo " "
       case $response in
@@ -133,7 +195,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
         ;;
         no|No|NO|n|N)
       	exit 1
-      ;;
+        ;;
         *)
           echo "Invalid input. Please enter yes or no."
         ;;
