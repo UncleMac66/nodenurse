@@ -72,6 +72,8 @@ compartmentid=$(cat /opt/oci-hpc/conf/queues.conf | grep targetCompartment: | so
 reboot=true
 numnodes=$(echo $nodes | wc -w) 
 allocstate=false
+parallel=false
+goodhealth=true
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's instance name in the OCI console
 generate_instance_name() {
@@ -102,7 +104,7 @@ display_nodes() {
     echo "----------------------" $start_timestamp "---------------------"
     echo "----------------------------------------------------------------"
     echo " " 
-    printf "%-13s %-30s %-13s %-13s\n" "Hostname" "Instance Name" "Host Serial #" "Slurm State"
+    printf "%-10s %-25s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial #" "Slurm State"
     echo " " 
     if [ -z "$nodes" ];then
       echo "There are no hosts that are showing as down/drain in sinfo"
@@ -111,7 +113,7 @@ display_nodes() {
       exit 0
     fi
 
-    # Loop through each node and get its instance name
+    # Loop through each node and get its instance name and details
     for n in $nodes
     do
       inst=`generate_instance_name $n`
@@ -120,7 +122,7 @@ display_nodes() {
       if [[ $state =~ "mix" ]] || [[ $state =~ "alloc" ]]; then
         allocstate=true
       fi
-      printf "%-13s %-35s %-13s %-13s\n" "$n" "$inst" "$serial" "$state"
+      printf "%-10s %-25s %-15s %-10s\n" "$n" "$inst" "$serial" "$state"
       echo " "
     done	
 
@@ -134,25 +136,11 @@ display_nodes() {
       echo " "
     fi
 
-    # if -i then exit cleanly
     if [[ $ntype == idnodes ]]; then 
       exit 0
     fi
-    
-    # Prompt user if they want to continue
-    echo "Continue? (y/n)"
-    read response
-    case $response in 
-      yes|YES|Yes|y|Y)
-      ;;
-      no|NO|No|n|N)
-	exit 1
-      ;;	
-      *)
-        echo "Invalid input. Please enter yes or no."
-      ;;
-    esac
-    echo " " 
+
+        echo " " 
 }
 
 if [ $ntype == idnodes ]; then
@@ -165,25 +153,66 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
     currentnumnodes=1
     display_nodes
+    echo "Do you want to run healthchecks in parallel? (yes/no)"
+    read response
+    case $response in 
+      yes|YES|Yes|y|Y)
+        parallel=true
+      ;;
+      no|NO|No|n|N)
+        parallel=false
+      ;;	
+      *)
+        echo "Invalid input. Please enter yes or no."
+      ;;
+    esac
 
-    # Loop through each node and grab the healthcheck
-    for n in $nodes
-    do
-      echo "----------------------------------------------------------------" 
-      echo -e "Healthcheck from node: ${YELLOW}$n${NC} -- Node $currentnumnodes/$numnodes"
-      echo "----------------------------------------------------------------" 
-      if [[ $ntype == healthfresh ]]; then
-        ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || echo "Failed to connect to $n"
-      else
-        ssh "$n" "cat /tmp/latest_healthcheck.log" || echo "Can't find the latest healthcheck. Are healthchecks enabled on this cluster?"
-      fi
+    if [[ $parallel == false ]]; then
+      # Loop through each node and grab the healthcheck
+      for n in $nodes
+      do
+        echo " " 
+        echo "----------------------------------------------------------------" 
+        echo -e "Healthcheck from node: ${YELLOW}$n${NC} -- Node $currentnumnodes/$numnodes"
+        echo "----------------------------------------------------------------" 
+        if [[ $ntype == healthfresh ]]; then
+          ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || echo "Failed to connect to $n"
+        else
+          ssh "$n" "cat /tmp/latest_healthcheck.log" || echo "Can't find the latest healthcheck. Are healthchecks enabled on this cluster?"
+        fi
+        echo " " 
+        let currentnumnodes++
+      done
+    else
+      # run healthchecks in parallel
       echo " " 
-      let currentnumnodes++
-    done
+      echo "----------------------------------------------------------------" 
+      echo "Healthchecks from nodes: $nodes"
+      echo " " 
+      echo "Note: To simplify output only reporting warnings and errors"
+      echo "----------------------------------------------------------------" 
+      echo " " 
+      if [[ $ntype == healthfresh ]]; then
+        pdsh -R ssh -w "$nodes" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py -l ERROR -l WARNING" || echo -e \n"Failed to gather healthchecks in parallel" 
+	echo " " 
+      else
+        pdsh -R ssh -u 5 -w "$nodes" "cat /tmp/latest_healthcheck.log | grep -E "ERROR|WARNING"" || {echo -e "\nCan't find the latest healthcheck. Are healthchecks enabled on this cluster?" && goodhealth=false}
+      echo " " 
+      fi
+    fi
+
+#    if [[ $goodhealth == "true" ]]; then
+      echo -e "${GREEN}Complete:${NC} Healthchecks gathered on $numnodes nodes"
+      echo " " 
+      echo $goodhealth
+#    else
+#      echo -e "$(RED}Completed with errors:${NC} Healthchecks gathering on $numnodes completed with errors"
+#    fi
+
 
     # Offer to run ncclscout if number of node is greater than 1
     if [ $numnodes -gt 1 ];then
-      echo "Would you like to run ncclscout on these $numnodes nodes? (y/n)"
+      echo "Would you like to run ncclscout on these $numnodes nodes? (yes/no)"
       read response
       echo " "
       case $response in
@@ -196,6 +225,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 	  done
 	  python3 ncclscout.py $date-hostfile.tmp
 	  rm $date-hostfile.tmp
+	  echo " "
         ;;
         no|No|NO|n|N)
       	exit 1
