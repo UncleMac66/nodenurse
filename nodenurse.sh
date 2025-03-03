@@ -9,7 +9,7 @@ if [ -z "$1" ]; then
 fi
 
 # Check first argument to grab function or exit if no valid option is provided
-if [[ $1 == "-h" ]] or [[ $1 == "-f" ]]; then
+if [[ $1 == "-h" ]] || [[ $1 == "-f" ]]; then
     ntype=healthfresh
 elif [[ $1 == "-l" ]] || [[ $1 == "-hl" ]]; then
     ntype=healthlatest
@@ -100,7 +100,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
     for n in $nodes
     do
       echo "----------------------------------------------------------------" 
-      echo -e "Healthcheck from node: ${YELLOW}$n${NC} -- Node $currentnumnodes / $numnodes"
+      echo -e "Healthcheck from node: ${YELLOW}$n${NC} -- Node $currentnumnodes/$numnodes"
       echo "----------------------------------------------------------------" 
       if [[ $ntype == healthfresh ]]; then
         ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || echo "Failed to connect to $n"
