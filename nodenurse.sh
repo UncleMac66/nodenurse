@@ -84,7 +84,7 @@ display_nodes() {
       inst=`generate_instance_name $n`
    #   ocid=`generate_ocid $inst`
    #   echo -e " ${RED}$n${NC} <-> $inst <-> $ocid"
-      echo -e " ${RED}$n${NC} <-> $inst 
+      echo -e "${RED}$n${NC} <-> $inst "
       echo " "
     done	
 }
