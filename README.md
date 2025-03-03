@@ -2,11 +2,6 @@
 
 
 # ./nodenurse.sh
-todo
-- check node's state in slurm and show it in displaynodes
-- double confirm if you want to reboot nodes that are in idle or alloc state
-
-
 Usage: ./nodenurse.sh | -h [Run fresh healthchecks on node(s)] | -l [Get the latest healthcheck from the node(s)] | -r [Hard reset node(s)] | -i [Identify nodes] | <hostname, hostfile, or leave blank to pull down hosts from sinfo>
 
 ./nodenurse.sh takes the nodes that are in a down/drain state in slurm or a supplied nodename or hostfile and can run a fresh healthcheck on them, grab the latest healthcheck, send them through ncclscout.py, or can be used to initiate a hard reboot of those nodes.
@@ -22,4 +17,7 @@ For example:
 ./nodenurse.sh -l -> grabs the latest healthchecks from nodes marked as drain or down in slurm
 ```
 
+Todo:
+- [] add ssh/gather facts testing to suite
+- [] simplify options? 
 
