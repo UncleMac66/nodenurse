@@ -18,6 +18,6 @@ For example:
 ```
 
 Todo:
-- [] add ssh/gather facts testing to suite
-- [] simplify options? 
+- add ssh/gather facts testing to suite
+- simplify options? 
 
