@@ -74,6 +74,7 @@ numnodes=$(echo $nodes | wc -w)
 allocstate=false
 parallel=false
 goodhealth=true
+goodssh=true
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's instance name in the OCI console
 generate_instance_name() {
@@ -83,17 +84,17 @@ generate_instance_name() {
 
 # Function takes in an instance name and returns it's OCID
 generate_ocid() {
-    outputocid=`oci compute instance list --compartment-id $compartmentid --display-name $1 --auth instance_principal | jq -r .data[0].id`
+    outputocid=`oci compute instance list --compartment-id $compartmentid --display-name $1 --auth instance_principal | jq -r .data[0].id || echo -e "${RED}Error:${NC} Could not retrieve instance OCID"`
     echo $outputocid
 }
 
 generate_slurm_state() {
-    outputstate=`sinfo -N | grep "$1 " | awk '{print $4}' | sort -u` 
+    outputstate=`sinfo -N | grep "$1 " | awk '{print $4}' | sort -u`
     echo $outputstate
 }
 
 generate_serial() {
-    outputserial=`ssh $1 "sudo dmidecode -s system-serial-number"`
+    outputserial=`ssh $1 "sudo dmidecode -s system-serial-number" || { echo "Error: SSH";goodssh=false; }`
     echo $outputserial
 }
 
@@ -107,7 +108,7 @@ display_nodes() {
     printf "%-10s %-25s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial #" "Slurm State"
     echo " " 
     if [ -z "$nodes" ];then
-      echo "There are no hosts that are showing as down/drain in sinfo"
+      echo -e "${RED}Warning:${NC} No hosts to list. There are no hosts that are showing as down/drain in sinfo. Please provide a hostfile"
       echo " "
       echo "exiting..."
       exit 0
@@ -136,11 +137,16 @@ display_nodes() {
       echo " "
     fi
 
+    if [[ $goodssh == false ]]; then
+      echo -e "${RED}WARNING:${NC} There are hosts that can't be accesed via SSH. Healthchecks and ansible scripts will fail on these hosts."
+      echo " "
+    fi
+
     if [[ $ntype == idnodes ]]; then 
       exit 0
     fi
 
-        echo " " 
+    echo " " 
 }
 
 if [ $ntype == idnodes ]; then
@@ -153,7 +159,9 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
     currentnumnodes=1
     display_nodes
-    echo "Do you want to run healthchecks in parallel? (yes/no)"
+
+    # prompt user for parallelism
+    echo "Do you want to run healthchecks in parallel? (yes/no/quit)"
     read response
     case $response in 
       yes|YES|Yes|y|Y)
@@ -162,56 +170,67 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
       no|NO|No|n|N)
         parallel=false
       ;;	
+      q|Q|quit|QUIT|Quit)
+	exit 0
+	;;
       *)
         echo "Invalid input. Please enter yes or no."
+	exit 1
       ;;
     esac
 
+    # if serial then iterate through nodes 1x1
     if [[ $parallel == false ]]; then
+
       # Loop through each node and grab the healthcheck
       for n in $nodes
       do
-        echo " " 
+        echo " "
         echo "----------------------------------------------------------------" 
         echo -e "Healthcheck from node: ${YELLOW}$n${NC} -- Node $currentnumnodes/$numnodes"
         echo "----------------------------------------------------------------" 
         if [[ $ntype == healthfresh ]]; then
-          ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || echo "Failed to connect to $n"
+          ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || goodhealth=false
         else
-          ssh "$n" "cat /tmp/latest_healthcheck.log" || echo "Can't find the latest healthcheck. Are healthchecks enabled on this cluster?"
+          ssh "$n" "cat /tmp/latest_healthcheck.log" || goodhealth=false
         fi
-        echo " " 
+        echo " "
         let currentnumnodes++
       done
     else
+
       # run healthchecks in parallel
+      # output heading
       echo " " 
       echo "----------------------------------------------------------------" 
-      echo "Healthchecks from nodes: $nodes"
+      echo "Healthchecks from nodes: $nodes" | fold -s -w 65
       echo " " 
-      echo "Note: To simplify output only reporting warnings and errors"
+      echo -e "${YELLOW}Note:${NC} To simplify output only reporting warnings and errors"
       echo "----------------------------------------------------------------" 
       echo " " 
+
+      # if fresh or latest
       if [[ $ntype == healthfresh ]]; then
-        pdsh -R ssh -w "$nodes" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py -l ERROR -l WARNING" || echo -e \n"Failed to gather healthchecks in parallel" 
+        pdsh -S -R ssh -w "$nodes" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py -l ERROR -l WARNING" || goodhealth=false
 	echo " " 
       else
-        pdsh -R ssh -u 5 -w "$nodes" "cat /tmp/latest_healthcheck.log | grep -E "ERROR|WARNING"" || {echo -e "\nCan't find the latest healthcheck. Are healthchecks enabled on this cluster?" && goodhealth=false}
-      echo " " 
+        pdsh -S -R ssh -u 5 -w "$nodes" "cat /tmp/latest_healthcheck.log | grep -E "ERROR|WARNING"" || goodhealth=false
+      echo " "
       fi
-    fi
 
-#    if [[ $goodhealth == "true" ]]; then
+    fi 
+
+    if [ $goodhealth == "true" ]; then
       echo -e "${GREEN}Complete:${NC} Healthchecks gathered on $numnodes nodes"
+      echo " "
+    else
+      echo -e "${RED}Error:${NC} Healthcheck gathering on $numnodes nodes completed with errors"
       echo " " 
-      echo $goodhealth
-#    else
-#      echo -e "$(RED}Completed with errors:${NC} Healthchecks gathering on $numnodes completed with errors"
-#    fi
+    fi
 
 
     # Offer to run ncclscout if number of node is greater than 1
-    if [ $numnodes -gt 1 ];then
+    if [ $numnodes -gt 1 ] && [ $goodhealth == true ];then
       echo "Would you like to run ncclscout on these $numnodes nodes? (yes/no)"
       read response
       echo " "
@@ -253,24 +272,26 @@ if [ $ntype == rebootall ]; then
 	echo " "         
 	for n in $nodes
 	do
-	  echo "----------------------------------------------------------------"	
+	  echo "----------------------------------------------------------------" | tee -a $date-nodenurse.log
           inst=`generate_instance_name $n`
           ocid=`generate_ocid $inst`
-          echo -e "Rebooting ${YELLOW}$n${NC}"
-	  echo -e "Instance Name: $inst"
-	  echo -e "OCID: $ocid"
-	  echo " " 
+	  serial=`generate_serial $n`
+          echo -e "Rebooting ${YELLOW}$n${NC}" | tee -a $date-nodenurse.log
+	  echo -e "Instance Name: $inst" | tee -a $date-nodenurse.log
+	  echo -e "Serial Number: $serial" | tee -a $date-nodenurse.log
+	  echo -e "OCID: $ocid" | tee -a $date-nodenurse.log
+	  echo " "
           oci compute instance action --instance-id $ocid --action RESET --auth instance_principal >> $date-nodenurse.log || reboot=false	
 	  if [ $reboot == false ];
 	  then
-            echo " "
-            echo -e "${RED}Reset command failed!${NC}" 
-	    echo " "
+            echo " " | tee -a $date-nodenurse.log
+            echo -e "${RED}Reset command failed!${NC}" | tee -a $date-nodenurse.log 
+	    echo " " | tee -a $date-nodenurse.log
 	  else 
 	    echo -e "$(date) - ${GREEN}Success${NC} - Hard reset command sent to node ${YELLOW}$n${NC}" | tee -a $date-nodenurse.log
 	  fi
-	  echo "----------------------------------------------------------------"
-	  echo " "
+	  echo "----------------------------------------------------------------" | tee -a $date-nodenurse.log
+	  echo " " | tee -a $date-nodenurse.log
         done
         ;;
 
