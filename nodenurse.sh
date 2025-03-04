@@ -1,21 +1,21 @@
 #!/bin/bash
 
+HELP_MESSAGE="
+Usage: $0 | -h [Run fresh healthchecks on node(s)] | -l [Get the latest healthcheck from the node(s)] | -r [Hard reset node(s)] | -i [Identify nodes] | <hostname, hostfile, or leave blank to pull down hosts from sinfo>
+\n\n
+$0 takes the nodes that are in a down/drain state in slurm or a supplied nodename or hostfile and can run a fresh healthcheck on them, grab the latest healthcheck, send them through ncclscout.py, or can be used to initiate a hard reboot of those nodes.
+\n\n
+Syntax: $0 [option] [host or hostfile]
+\n\n
+Examples:\n
+$0 -h <path/to/hostfile> -> runs a fresh healthcheck on the node(s) in the provided hostlist\n
+$0 -r gpu-123 -> sends a hard reboot signal to node 'gpu-123'\n
+$0 -l -> grabs the latest healthchecks from nodes marked as drain or down in slurm\n
+"
+
 # Check if an argument is passed
 if [ -z "$1" ]; then
-    echo " "
-    echo -e "Usage: $0 | -h [Run fresh healthchecks on node(s)] | -l [Get the latest healthcheck from the node(s)] | -r [Hard reset node(s)] | -i [Identify nodes] | <hostname, hostfile, or leave blank to pull down hosts from sinfo>"
-    echo ""
-    echo "$0 takes the nodes that are in a down/drain state in slurm or a supplied nodename or hostfile and can run a fresh healthcheck on them, grab the latest healthcheck, send them through ncclscout.py, or can be used to initiate a hard reboot of those nodes."
-    echo " " 
-    echo "Syntax: $0 [option] [host or hostfile]"
-    echo " " 
-    echo "For example:"
-    echo "$0 -h <path/to/hostfile> -> runs a fresh healthcheck on the node(s) in the provided hostlist"
-    echo " "
-    echo "$0 -r gpu-123 -> sends a hard reboot signal to node 'gpu-123'"
-    echo " "
-    echo -e "$0 -l -> grabs the latest healthchecks from nodes marked as drain or down in slurm"
-    echo " " 
+    echo -e $HELP_MESSAGE
     exit 1
 fi
 
@@ -29,7 +29,8 @@ elif [[ $1 == "-r" ]]; then
 elif [[ $1 == "-i" ]]; then
     ntype=idnodes
 else
-    echo "Unknown argument. Please try again"
+    echo -e "Unknown argument '$1' Please try again\n"
+    echo -e $HELP_MESSAGE
     exit 1
 fi
 
