@@ -1,40 +1,63 @@
 #!/bin/bash
 
+HELP_MESSAGE="
+Usage: $0 [OPTION] [HOST(S)]
+
+Description:
+$0 takes the nodes that are in a down/drain state in slurm, supplied nodename(s), or a hostfile and 
+can run a fresh healthcheck on them, grab the latest healthcheck, send them through ncclscout.py, or can be used 
+to initiate a hard reboot of those nodes.
+
+Options:
+-h, --help             Display this message and exit.
+-c, --healthcheck      Run a fresh healthcheck on the node(s).
+-l, --latest           Gather the latest healthcheck from the node(s).
+-r, --reboot           Hard reboot the node(s).
+-i, --identify         Display detail of the node(s) and exit.
+
+Arguments:
+HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2).
+                       This is optional. If no hosts are provided nodenurse will pull in nodes
+                       that are in a down or drain state in slurm by default.
+
+Examples:
+$0 -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
+$0 -r gpu-1                 sends a hard reboot signal to node 'gpu-1'.
+$0 -l                       grabs the latest healthchecks from nodes marked as drain or down in slurm.
+$0 --identify gpu-1 gpu-2   display details about 'gpu-1' and 'gpu-2' then quit.
+"
+
 # Check if an argument is passed
 if [ -z "$1" ]; then
-    echo " "
-    echo -e "Usage: $0 | -h [Run fresh healthchecks on node(s)] | -l [Get the latest healthcheck from the node(s)] | -r [Hard reset node(s)] | -i [Identify nodes] | <hostname, hostfile, or leave blank to pull down hosts from sinfo>"
-    echo ""
-    echo "$0 takes the nodes that are in a down/drain state in slurm or a supplied nodename or hostfile and can run a fresh healthcheck on them, grab the latest healthcheck, send them through ncclscout.py, or can be used to initiate a hard reboot of those nodes."
-    echo " " 
-    echo "Syntax: $0 [option] [host or hostfile]"
-    echo " " 
-    echo "For example:"
-    echo "$0 -h <path/to/hostfile> -> runs a fresh healthcheck on the node(s) in the provided hostlist"
-    echo " "
-    echo "$0 -r gpu-123 -> sends a hard reboot signal to node 'gpu-123'"
-    echo " "
-    echo -e "$0 -l -> grabs the latest healthchecks from nodes marked as drain or down in slurm"
-    echo " " 
+    echo "$HELP_MESSAGE"
     exit 1
 fi
 
 # Check first argument to grab function or exit if no valid option is provided
-if [[ $1 == "-h" ]] || [[ $1 == "-f" ]]; then
+if [[ $1 == "-c" ]] || [[ $1 == "--healthcheck" ]]; then
     ntype=healthfresh
-elif [[ $1 == "-l" ]] || [[ $1 == "-hl" ]]; then
+    echo -e "\nFresh Healthcheck Mode..."
+elif [[ $1 == "-l" ]] || [[ $1 == "--latest" ]]; then
     ntype=healthlatest
-elif [[ $1 == "-r" ]]; then
+    echo -e "\nLatest Healthcheck Mode..."
+elif [[ $1 == "-r" ]] || [[ $1 == "--reboot" ]]; then
     ntype=rebootall
-elif [[ $1 == "-i" ]]; then
+    echo -e "\nReboot Mode..."
+elif [[ $1 == "-i" ]] || [[ $1 == "--identify" ]]; then
     ntype=idnodes
+    echo -e "\nIdentify Mode..."
+elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]]; then
+    echo -e $HELP_MESSAGE
+    exit 0
 else
-    echo "Unknown argument. Please try again"
+    echo -e $HELP_MESSAGE
+    echo -e "Unknown argument '$1' Please try again\n"
     exit 1
 fi
 
 # If a second argument is passed, assume its a nodename or a hostfile. If no second argument is passed grab the list of nodes in a down state in slurm
 if [ -f "$2" ]; then
+
     # arg is a hostfile
     echo " "
     echo "Reading from provided hostfile..."
@@ -43,18 +66,25 @@ if [ -f "$2" ]; then
     do
       nodes+="$i "
     done
+
 elif [ -z "$2" ]; then
+
     # no argument provided so pull from sinfo
     echo " "
     echo "No hostfile provided. Grabbing down/drain hosts from slurm..."
     echo " " 
     nodes=$(sinfo -N | grep -E "down|drain" | awk '{print $1}' | sort -u)
+
 else
-    # arg is a single hostname
+
+    # arg is/are manually entered hostname(s)
+    for arg in "${@:2}"; do
+      nodes+="$arg "
+    done
     echo " "
-    echo "Single hostname provided..."
+    echo "Hostname(s) provided manually..."
     echo " " 
-    nodes="$2"
+
 fi
 
 # Initialize colors
@@ -72,57 +102,91 @@ compartmentid=$(cat /opt/oci-hpc/conf/queues.conf | grep targetCompartment: | so
 reboot=true
 numnodes=$(echo $nodes | wc -w) 
 allocstate=false
+parallel=false
+goodhealth=true
+goodssh=true
+goodinst=true
+goodslurm=true
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's instance name in the OCI console
 generate_instance_name() {
     inst=`cat /etc/hosts | grep "$1 " | grep .local.vcn | awk '{print $4}'`
-    echo $inst
+    if [ -z $inst ]; then
+      echo -e "Not Found"
+    else
+      echo $inst
+    fi
 }
 
 # Function takes in an instance name and returns it's OCID
 generate_ocid() {
-    outputocid=`oci compute instance list --compartment-id $compartmentid --display-name $1 --auth instance_principal | jq -r .data[0].id`
+    outputocid=`oci compute instance list --compartment-id $compartmentid --display-name $1 --auth instance_principal | jq -r .data[0].id || echo -e "${RED}Error:${NC} Could not retrieve instance OCID"`
     echo $outputocid
 }
 
+# Function takes in a hostname (e.g. gpu-123) and returns it's state in slurm
 generate_slurm_state() {
-    outputstate=`sinfo -N | grep "$1 " | awk '{print $4}' | sort -u` 
-    echo $outputstate
+    outputstate=`sinfo -N | grep "$1 " | awk '{print $4}' | sort -u`
+    if [ -z $outputstate ]; then
+      echo -e "Not Found"
+    else
+      echo $outputstate
+    fi
 }
 
+# Function takes in a hostname (e.g. gpu-123) and returns it's serial number
 generate_serial() {
-    outputserial=`ssh $1 "sudo dmidecode -s system-serial-number"`
+    outputserial=`ssh $1 "sudo dmidecode -s system-serial-number" || echo -e "Error: SSH"`
     echo $outputserial
 }
 
-# Function displays the list of 'Down/drain Hosts' along with with instance names and OCIDs
+# Function displays the list of hosts along with relevant information, checking for nodes that can't be ssh'd or are in an allocated state in slurm
 display_nodes() {
-    
+
     echo "----------------------------------------------------------------"
     echo "----------------------" $start_timestamp "---------------------"
     echo "----------------------------------------------------------------"
     echo " " 
-    printf "%-13s %-30s %-13s %-13s\n" "Hostname" "Instance Name" "Host Serial #" "Slurm State"
+    printf "%-10s %-25s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial #" "Slurm State"
     echo " " 
     if [ -z "$nodes" ];then
-      echo "There are no hosts that are showing as down/drain in sinfo"
+      echo -e "${YELLOW}Warning:${NC} No hosts to list. There are no hosts that are showing as down/drain in sinfo. Please provide a hostfile" | fold -s -w 65
+
       echo " "
       echo "exiting..."
       exit 0
     fi
 
-    # Loop through each node and get its instance name
+    # Loop through each node and get its instance name and details
     for n in $nodes
     do
+
+      # Gather details
       inst=`generate_instance_name $n`
       state=`generate_slurm_state $n`
       serial=`generate_serial $n`
+      
+      # Node error checking
       if [[ $state =~ "mix" ]] || [[ $state =~ "alloc" ]]; then
         allocstate=true
       fi
-      printf "%-13s %-35s %-13s %-13s\n" "$n" "$inst" "$serial" "$state"
+
+      if [[ $serial == "Error: SSH" ]]; then
+	goodssh=false
+      fi
+
+      if [[ $inst == "Not Found" ]]; then
+	goodinst=false
+      fi
+
+      if [[ $state == "Not Found" ]]; then
+	goodslurm=false
+      fi
+
+      # output node data
+      printf "%-10s %-25s %-15s %-10s\n" "$n" "$inst" "$serial" "$state"
       echo " "
-    done	
+    done
 
     # Display total num of nodes
     echo "Total: $numnodes Host(s)"
@@ -130,60 +194,119 @@ display_nodes() {
 
     # if any nodes are in alloc state then warn user
     if [[ $allocstate == true ]]; then
-      echo -e "${RED}WARNING:${NC} There are hosts in an allocated state. Proceed with caution as rebooting nodes that are running jobs is ill-advised and can cause significant customer disruption" 
+      echo -e "${RED}WARNING:${NC} There are hosts in an allocated state."
+      echo -e "Proceed with caution as rebooting nodes that are running jobs is ill-advised and can cause significant customer disruption" | fold -s -w 65
       echo " "
     fi
 
-    # if -i then exit cleanly
-    if [[ $ntype == idnodes ]]; then 
-      exit 0
+    # If there is an ssh failure warn the user
+    if [[ $goodssh == false ]]; then
+      echo -e "${RED}WARNING:${NC} There are hosts that can't be accesed via SSH"
+      echo -e "Healthchecks and ansible scripts will fail on these hosts."
+      echo " "
     fi
-    
-    # Prompt user if they want to continue
-    echo "Continue? (y/n)"
-    read response
-    case $response in 
-      yes|YES|Yes|y|Y)
-      ;;
-      no|NO|No|n|N)
-	exit 1
-      ;;	
-      *)
-        echo "Invalid input. Please enter yes or no."
-      ;;
-    esac
-    echo " " 
+
+    # If instance name is not in /etc/hosts
+    if [[ $goodinst == false ]] || [[ $goodslurm == false ]]; then
+	    echo -e "${RED}WARNING:${NC} There are hosts that can't be found in /etc/hosts or in slurm."
+	    echo -e "It is likely that the host(s) don't exist or were mistyped"
+      echo " "
+    fi
+
 }
 
+# Main Function for --identify
 if [ $ntype == idnodes ]; then
 
+    # Just display the node information and exit
     display_nodes
+    exit 0
 
 fi
 
+# Main Function for --healtcheck and --latest
 if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
+    # Initialize the node count and display node details
     currentnumnodes=1
     display_nodes
 
-    # Loop through each node and grab the healthcheck
-    for n in $nodes
-    do
-      echo "----------------------------------------------------------------" 
-      echo -e "Healthcheck from node: ${YELLOW}$n${NC} -- Node $currentnumnodes/$numnodes"
-      echo "----------------------------------------------------------------" 
-      if [[ $ntype == healthfresh ]]; then
-        ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || echo "Failed to connect to $n"
-      else
-        ssh "$n" "cat /tmp/latest_healthcheck.log" || echo "Can't find the latest healthcheck. Are healthchecks enabled on this cluster?"
-      fi
-      echo " " 
-      let currentnumnodes++
-    done
+    # Prompt user for parallelism
+    echo "Do you want to run healthchecks in parallel? This is recommended for large number of hosts (yes/no/quit)" | fold -s -w 65
+    read response
+    case $response in 
+      yes|YES|Yes|y|Y)
+        parallel=true
+      ;;
+      no|NO|No|n|N)
+        parallel=false
+      ;;	
+      q|Q|quit|QUIT|Quit)
+	exit 0
+	;;
+      *)
+        echo "Invalid input. Please enter yes or no."
+	exit 1
+      ;;
+    esac
 
-    # Offer to run ncclscout if number of node is greater than 1
-    if [ $numnodes -gt 1 ];then
-      echo "Would you like to run ncclscout on these $numnodes nodes? (y/n)"
+    # If serial then iterate through nodes 1x1
+    if [[ $parallel == false ]]; then
+
+      # Loop through each node and grab the healthcheck
+      for n in $nodes
+      do
+	# Output heading
+        echo " "
+        echo "----------------------------------------------------------------" 
+        echo -e "Healthcheck from node: ${YELLOW}$n${NC} -- Node $currentnumnodes/$numnodes"
+        echo "----------------------------------------------------------------" 
+
+	# if fresh or latest
+        if [[ $ntype == healthfresh ]]; then
+          ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Healthcheck for node $n failed. Ensure that node exists, can accept ssh and /opt/oci-hpc/healthchecks/check_gpu_setup.py exists"; }
+        else
+          ssh "$n" "cat /tmp/latest_healthcheck.log" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Gathering the latest healthcheck for node $n failed. Ensure that healthchecks are enabled on the cluster"; }
+        fi
+        echo " "
+        let currentnumnodes++
+      done
+    else
+
+      # otherwise run healthchecks in parallel
+      # output heading
+      echo " " 
+      echo "----------------------------------------------------------------" 
+      echo "Healthchecks from nodes: $nodes" | fold -s -w 65
+      echo " " 
+      echo -e "${YELLOW}Note:${NC} To simplify output only reporting warnings and errors"
+      echo "----------------------------------------------------------------" 
+      echo " " 
+
+      # if fresh or latest
+      if [[ $ntype == healthfresh ]]; then
+        pdsh -S -R ssh -w "$nodes" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py -l ERROR -l WARNING" || goodhealth=false
+	echo " " 
+      else
+        pdsh -S -R ssh -u 5 -w "$nodes" "cat /tmp/latest_healthcheck.log | grep -E "ERROR|WARNING"" || goodhealth=false
+      echo " " 
+      fi
+
+    fi # End serial/parallel healthchecks 
+
+    # If successful than output a good completion status, if errors present than inform user
+    if [ $goodhealth == "true" ]; then
+      echo -e "${GREEN}Complete:${NC} Healthchecks gathered on $numnodes nodes"
+      echo " "
+    else
+      echo -e "${RED}WARNING:${NC} Healthcheck gathering on $numnodes nodes completed with errors"
+      echo " " 
+    fi
+
+
+    # Offer to run ncclscout if number of node is greater than 1, healthchecks are good and ncclscout.py is present in the directory
+    if [ $numnodes -gt 1 ] && [ $goodhealth == true ] && [ -f "ncclscout.py" ];then
+      echo "Would you like to run ncclscout on these $numnodes nodes? (yes/no)"
       read response
       echo " "
       case $response in
@@ -196,6 +319,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 	  done
 	  python3 ncclscout.py $date-hostfile.tmp
 	  rm $date-hostfile.tmp
+	  echo " "
         ;;
         no|No|NO|n|N)
       	exit 1
@@ -208,6 +332,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
 fi
 
+# Main function for --reboot
 if [ $ntype == rebootall ]; then
 
     display_nodes
@@ -221,27 +346,38 @@ if [ $ntype == rebootall ]; then
       yes|Yes|YES|y|Y)
         echo "Proceeding..."
 	echo " "         
+
+	# loop through list of nodes, output details, send reset signal via ocicli, output success/failure. All output is also sent to a log titled <date>-nodenurse.log
 	for n in $nodes
 	do
-	  echo "----------------------------------------------------------------"	
+
+	  # Generate and display info for each node
+	  echo "----------------------------------------------------------------" | tee -a $date-nodenurse.log
           inst=`generate_instance_name $n`
           ocid=`generate_ocid $inst`
-          echo -e "Rebooting ${YELLOW}$n${NC}"
-	  echo -e "Instance Name: $inst"
-	  echo -e "OCID: $ocid"
-	  echo " " 
+	  serial=`generate_serial $n`
+          echo -e "Rebooting ${YELLOW}$n${NC}" | tee -a $date-nodenurse.log
+	  echo -e "Instance Name: $inst" | tee -a $date-nodenurse.log
+	  echo -e "Serial Number: $serial" | tee -a $date-nodenurse.log
+	  echo -e "OCID: $ocid" | tee -a $date-nodenurse.log
+	  echo " "
+
+	  # Send hard reboot signal to the node using the generated ocid
           oci compute instance action --instance-id $ocid --action RESET --auth instance_principal >> $date-nodenurse.log || reboot=false	
+
+	  # If the oci reboot cmd fails then inform user
 	  if [ $reboot == false ];
 	  then
-            echo " "
-            echo -e "${RED}Reset command failed!${NC}" 
-	    echo " "
+            echo " " | tee -a $date-nodenurse.log
+            echo -e "${RED}Reset command failed!${NC}" | tee -a $date-nodenurse.log 
+	    echo " " | tee -a $date-nodenurse.log
 	  else 
-	    echo -e "$(date) - ${GREEN}Success${NC} - Hard reset command sent to node ${YELLOW}$n${NC}" | tee -a $date-nodenurse.log
+	    echo -e "$(date -u '+%Y%m%d%H%M') - ${GREEN}Success${NC} - Hard reset sent to node ${YELLOW}$n${NC}" | tee -a $date-nodenurse.log
 	  fi
-	  echo "----------------------------------------------------------------"
-	  echo " "
-        done
+	  echo "----------------------------------------------------------------" | tee -a $date-nodenurse.log
+	  echo " " | tee -a $date-nodenurse.log
+
+        done # End reboot loop
         ;;
 
       no|No|NO|n|N)
@@ -254,4 +390,3 @@ if [ $ntype == rebootall ]; then
         ;;
     esac
 fi
-
