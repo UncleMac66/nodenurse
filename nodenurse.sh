@@ -1,33 +1,54 @@
 #!/bin/bash
 
 HELP_MESSAGE="
-Usage: $0 | -h [Run fresh healthchecks on node(s)] | -l [Get the latest healthcheck from the node(s)] | -r [Hard reset node(s)] | -i [Identify nodes] | <hostname, hostfile, or leave blank to pull down hosts from sinfo>
-\n\n
-$0 takes the nodes that are in a down/drain state in slurm or a supplied nodename or hostfile and can run a fresh healthcheck on them, grab the latest healthcheck, send them through ncclscout.py, or can be used to initiate a hard reboot of those nodes.
-\n\n
-Syntax: $0 [option] [host or hostfile]
-\n\n
-Examples:\n
-$0 -h <path/to/hostfile> -> runs a fresh healthcheck on the node(s) in the provided hostlist\n
-$0 -r gpu-123 -> sends a hard reboot signal to node 'gpu-123'\n
-$0 -l -> grabs the latest healthchecks from nodes marked as drain or down in slurm\n
-$0 --identify gpu-123 gpu-234 -> display details about 'gpu-123' and 'gpu-234' then quit\n"
+Usage: $0 [OPTION] [HOST(S)]
+
+Description:
+$0 takes the nodes that are in a down/drain state in slurm, supplied nodename(s), or a hostfile and 
+can run a fresh healthcheck on them, grab the latest healthcheck, send them through ncclscout.py, or can be used 
+to initiate a hard reboot of those nodes.
+
+Options:
+-h, --help             Display this message and exit.
+-c, --healthcheck      Run a fresh healthcheck on the node(s).
+-l, --latest           Gather the latest healthcheck from the node(s).
+-r, --reboot           Hard reboot the node(s).
+-i, --identify         Display detail of the node(s) and exit.
+
+Arguments:
+HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2).
+                       This is optional. If no hosts are provided nodenurse will pull in nodes
+                       that are in a down or drain state in slurm by default.
+
+Examples:
+$0 -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
+$0 -r gpu-1                 sends a hard reboot signal to node 'gpu-1'.
+$0 -l                       grabs the latest healthchecks from nodes marked as drain or down in slurm.
+$0 --identify gpu-1 gpu-2   display details about 'gpu-1' and 'gpu-2' then quit.
+"
 
 # Check if an argument is passed
 if [ -z "$1" ]; then
-    echo -e $HELP_MESSAGE
+    echo "$HELP_MESSAGE"
     exit 1
 fi
 
 # Check first argument to grab function or exit if no valid option is provided
-if [[ $1 == "-h" ]] || [[ $1 == "--healthcheck" ]]; then
+if [[ $1 == "-c" ]] || [[ $1 == "--healthcheck" ]]; then
     ntype=healthfresh
+    echo -e "\nFresh Healthcheck Mode..."
 elif [[ $1 == "-l" ]] || [[ $1 == "--latest" ]]; then
     ntype=healthlatest
+    echo -e "\nLatest Healthcheck Mode..."
 elif [[ $1 == "-r" ]] || [[ $1 == "--reboot" ]]; then
     ntype=rebootall
+    echo -e "\nReboot Mode..."
 elif [[ $1 == "-i" ]] || [[ $1 == "--identify" ]]; then
     ntype=idnodes
+    echo -e "\nIdentify Mode..."
+elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]]; then
+    echo -e $HELP_MESSAGE
+    exit 0
 else
     echo -e $HELP_MESSAGE
     echo -e "Unknown argument '$1' Please try again\n"
@@ -84,6 +105,8 @@ allocstate=false
 parallel=false
 goodhealth=true
 goodssh=true
+goodinst=true
+goodslurm=true
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's instance name in the OCI console
 generate_instance_name() {
@@ -113,7 +136,7 @@ generate_slurm_state() {
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's serial number
 generate_serial() {
-    outputserial=`ssh $1 "sudo dmidecode -s system-serial-number" || { echo -e "Error: SSH";goodssh=false; }`
+    outputserial=`ssh $1 "sudo dmidecode -s system-serial-number" || echo -e "Error: SSH"`
     echo $outputserial
 }
 
@@ -137,62 +160,78 @@ display_nodes() {
     # Loop through each node and get its instance name and details
     for n in $nodes
     do
+
+      # Gather details
       inst=`generate_instance_name $n`
       state=`generate_slurm_state $n`
       serial=`generate_serial $n`
+      
+      # Node error checking
       if [[ $state =~ "mix" ]] || [[ $state =~ "alloc" ]]; then
         allocstate=true
       fi
+
+      if [[ $serial == "Error: SSH" ]]; then
+	goodssh=false
+      fi
+
+      if [[ $inst == "Not Found" ]]; then
+	goodinst=false
+      fi
+
+      if [[ $state == "Not Found" ]]; then
+	goodslurm=false
+      fi
+
+      # output node data
       printf "%-10s %-25s %-15s %-10s\n" "$n" "$inst" "$serial" "$state"
       echo " "
-    done	
+    done
 
     # Display total num of nodes
     echo "Total: $numnodes Host(s)"
     echo " "
 
-    # if any nodes are not in /etc/hosts then warn user
-    if [[ -z $state ]]; then
-      echo -e "${RED}WARNING:${NC} Host $n is not present in /etc/hosts. This likely means that the host does not exist and may have been entered incorrectly" | fold -s -w 65
-      echo " "
-    fi
-
     # if any nodes are in alloc state then warn user
     if [[ $allocstate == true ]]; then
-      echo -e "${RED}WARNING:${NC} There are hosts in an allocated state. Proceed with caution as rebooting nodes that are running jobs is ill-advised and can cause significant customer disruption" | fold -s -w 65
-
+      echo -e "${RED}WARNING:${NC} There are hosts in an allocated state."
+      echo -e "Proceed with caution as rebooting nodes that are running jobs is ill-advised and can cause significant customer disruption" | fold -s -w 65
       echo " "
     fi
 
     # If there is an ssh failure warn the user
     if [[ $goodssh == false ]]; then
-      echo -e "${RED}WARNING:${NC} There are hosts that can't be accesed via SSH. Healthchecks and ansible scripts will fail on these hosts." | fold -s -w 65
-
+      echo -e "${RED}WARNING:${NC} There are hosts that can't be accesed via SSH"
+      echo -e "Healthchecks and ansible scripts will fail on these hosts."
       echo " "
     fi
 
-    # If -i then exit cleanly
-    if [[ $ntype == idnodes ]]; then 
-      exit 0
+    # If instance name is not in /etc/hosts
+    if [[ $goodinst == false ]] || [[ $goodslurm == false ]]; then
+	    echo -e "${RED}WARNING:${NC} There are hosts that can't be found in /etc/hosts or in slurm."
+	    echo -e "It is likely that the host(s) don't exist or were mistyped"
+      echo " "
     fi
 
-    echo " " 
 }
 
 # Main Function for --identify
 if [ $ntype == idnodes ]; then
 
+    # Just display the node information and exit
     display_nodes
+    exit 0
 
 fi
 
 # Main Function for --healtcheck and --latest
 if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
+    # Initialize the node count and display node details
     currentnumnodes=1
     display_nodes
 
-    # prompt user for parallelism
+    # Prompt user for parallelism
     echo "Do you want to run healthchecks in parallel? This is recommended for large number of hosts (yes/no/quit)" | fold -s -w 65
     read response
     case $response in 
@@ -211,26 +250,29 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
       ;;
     esac
 
-    # if serial then iterate through nodes 1x1
+    # If serial then iterate through nodes 1x1
     if [[ $parallel == false ]]; then
 
       # Loop through each node and grab the healthcheck
       for n in $nodes
       do
+	# Output heading
         echo " "
         echo "----------------------------------------------------------------" 
         echo -e "Healthcheck from node: ${YELLOW}$n${NC} -- Node $currentnumnodes/$numnodes"
         echo "----------------------------------------------------------------" 
+
 	# if fresh or latest
         if [[ $ntype == healthfresh ]]; then
-          ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || goodhealth=false
+          ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Healthcheck for node $n failed. Ensure that node exists, can accept ssh and /opt/oci-hpc/healthchecks/check_gpu_setup.py exists"; }
         else
-          ssh "$n" "cat /tmp/latest_healthcheck.log" || goodhealth=false
+          ssh "$n" "cat /tmp/latest_healthcheck.log" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Gathering the latest healthcheck for node $n failed. Ensure that healthchecks are enabled on the cluster"; }
         fi
         echo " "
         let currentnumnodes++
       done
     else
+
       # otherwise run healthchecks in parallel
       # output heading
       echo " " 
@@ -247,7 +289,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 	echo " " 
       else
         pdsh -S -R ssh -u 5 -w "$nodes" "cat /tmp/latest_healthcheck.log | grep -E "ERROR|WARNING"" || goodhealth=false
-      echo " "
+      echo " " 
       fi
 
     fi # End serial/parallel healthchecks 
@@ -257,13 +299,13 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
       echo -e "${GREEN}Complete:${NC} Healthchecks gathered on $numnodes nodes"
       echo " "
     else
-      echo -e "${RED}Error:${NC} Healthcheck gathering on $numnodes nodes completed with errors"
+      echo -e "${RED}WARNING:${NC} Healthcheck gathering on $numnodes nodes completed with errors"
       echo " " 
     fi
 
 
     # Offer to run ncclscout if number of node is greater than 1, healthchecks are good and ncclscout.py is present in the directory
-    if [ $numnodes -gt 1 ] && [ $goodhealth == true ];then
+    if [ $numnodes -gt 1 ] && [ $goodhealth == true ] && [ -f "ncclscout.py" ];then
       echo "Would you like to run ncclscout on these $numnodes nodes? (yes/no)"
       read response
       echo " "
