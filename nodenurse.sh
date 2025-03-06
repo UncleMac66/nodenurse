@@ -47,10 +47,10 @@ elif [[ $1 == "-i" ]] || [[ $1 == "--identify" ]]; then
     ntype=idnodes
     echo -e "\nIdentify Mode..."
 elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]]; then
-    echo -e $HELP_MESSAGE
+    echo "$HELP_MESSAGE"
     exit 0
 else
-    echo -e $HELP_MESSAGE
+    echo "$HELP_MESSAGE"
     echo -e "Unknown argument '$1' Please try again\n"
     exit 1
 fi
@@ -294,7 +294,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
     fi # End serial/parallel healthchecks 
 
-    # If successful than output a good completion status, if errors present than inform user
+    # If successful then output a good completion status, if errors present then inform user
     if [ $goodhealth == "true" ]; then
       echo -e "${GREEN}Complete:${NC} Healthchecks gathered on $numnodes nodes"
       echo " "
@@ -304,7 +304,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
     fi
 
 
-    # Offer to run ncclscout if number of node is greater than 1, healthchecks are good and ncclscout.py is present in the directory
+    # Offer to run ncclscout if number of node is greater then 1, healthchecks are good and ncclscout.py is present in the directory
     if [ $numnodes -gt 1 ] && [ $goodhealth == true ] && [ -f "ncclscout.py" ];then
       echo "Would you like to run ncclscout on these $numnodes nodes? (yes/no)"
       read response
