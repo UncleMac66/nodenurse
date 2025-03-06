@@ -46,6 +46,9 @@ elif [[ $1 == "-r" ]] || [[ $1 == "--reboot" ]]; then
 elif [[ $1 == "-i" ]] || [[ $1 == "--identify" ]]; then
     ntype=idnodes
     echo -e "\nIdentify Mode..."
+elif [[ $1 == "-t" ]] || [[ $1 == "--tagunhealthy" ]]; then
+    ntype=tag
+    echo -e "\nTagging Mode..."
 elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]]; then
     echo "$HELP_MESSAGE"
     exit 0
@@ -389,4 +392,20 @@ if [ $ntype == rebootall ]; then
         echo "Invalid input. Please enter yes or no."
         ;;
     esac
+fi
+
+# Main function for tagging hosts unhealthy
+if [ $ntype=tag ]; then
+
+    # Display node details
+    display_nodes
+    
+    # Prompt user if they are sure they want to mark the listed nodes and warn about tenancy needing to whitelisted and tags set up
+
+    # If yes then send nodes to tagging python script
+
+
+    # If no then exit cleanly
+
+
 fi
