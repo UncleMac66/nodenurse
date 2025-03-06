@@ -73,7 +73,7 @@ elif [ -z "$2" ]; then
     echo " "
     echo "No hostfile provided. Grabbing down/drain hosts from slurm..."
     echo " " 
-    nodes=$(sinfo -N | grep -E "down|drain" | awk '{print $1}' | sort -u)
+    nodes=$(sinfo -N | grep -E "down|drain" | awk '{print $1}' | sort -u | tr '\n' ' ')
 
 else
 
@@ -277,7 +277,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
       # output heading
       echo " " 
       echo "----------------------------------------------------------------" 
-      echo "Healthchecks from nodes: $nodes" | fold -s -w 65
+      echo "Healthchecks from nodes: $nodes" | fold -s -w 75
       echo " " 
       echo -e "${YELLOW}Note:${NC} To simplify output only reporting warnings and errors"
       echo "----------------------------------------------------------------" 
