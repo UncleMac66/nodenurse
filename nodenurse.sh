@@ -4,32 +4,47 @@ HELP_MESSAGE="
 Usage: $0 [OPTION] [HOST(S)]
 
 Description:
-$0 takes the nodes that are in a down/drain state in slurm, supplied nodename(s), or a hostfile and 
-can run a fresh healthcheck on them, grab the latest healthcheck, send them through ncclscout.py, or can be used 
-to initiate a hard reboot of those nodes.
+  $0 takes the nodes that are in a down/drain state in slurm, supplied nodename(s), or a hostfile and 
+  can run a fresh healthcheck on them, grab the latest healthcheck, send them through ncclscout.py, or can be used 
+  to initiate a hard reboot of those nodes.
 
 Options:
--h, --help             Display this message and exit.
--c, --healthcheck      Run a fresh healthcheck on the node(s).
--l, --latest           Gather the latest healthcheck from the node(s).
--r, --reboot           Hard reboot the node(s).
--i, --identify         Display detail of the node(s) and exit.
+  -h, --help             Display this message and exit.
+  -c, --healthcheck      Run a fresh healthcheck on the node(s).
+  -l, --latest           Gather the latest healthcheck from the node(s).
+  -t, --tagunhealthy     Apply the unhealthy tag to the node(s)
+  -r, --reboot           Hard reboot the node(s).
+  -i, --identify         Display detail of the node(s) and exit.
 
 Arguments:
-HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2).
-                       This is optional. If no hosts are provided nodenurse will pull in nodes
-                       that are in a down or drain state in slurm by default.
+  HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2).
+                         This is optional. If no hosts are provided nodenurse will pull in nodes
+                         that are in a down or drain state in slurm by default.
 
 Examples:
-$0 -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
-$0 -r gpu-1                 sends a hard reboot signal to node 'gpu-1'.
-$0 -l                       grabs the latest healthchecks from nodes marked as drain or down in slurm.
-$0 --identify gpu-1 gpu-2   display details about 'gpu-1' and 'gpu-2' then quit.
+  $0 -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
+  $0 -r gpu-1                 sends a hard reboot signal to node 'gpu-1'.
+  $0 -l                       grabs the latest healthchecks from nodes marked as drain or down in slurm.
+  $0 --identify gpu-1 gpu-2   display details about 'gpu-1' and 'gpu-2' then quit.
+
+Notes:
+  - $0 gets the compartement OCID from /opt/oci-hpc/conf/queues.conf.
+  If you use queues across compartments please double check this value and consider 
+  hard-coding it to your use case.
+
+  - In order for tagging hosts as unhealthy to work properly, your tenancy must be properly
+  whitelisted for unhealthy instance tagging.
+
+  - $0 automatically deduplicates your provided hostlist.
 "
+
+HELP_BRIEF="usage: $0 [-c healthcheck] [-l latest] [-r reboot]
+                      [-i identify] [-t tagunhealthy] [-h help]
+                      [OPTION {HOST(S)}]"
 
 # Check if an argument is passed
 if [ -z "$1" ]; then
-    echo "$HELP_MESSAGE"
+    echo "$HELP_BRIEF"
     exit 1
 fi
 
@@ -37,34 +52,40 @@ fi
 if [[ $1 == "-c" ]] || [[ $1 == "--healthcheck" ]]; then
     ntype=healthfresh
     echo -e "\nFresh Healthcheck Mode..."
+
 elif [[ $1 == "-l" ]] || [[ $1 == "--latest" ]]; then
     ntype=healthlatest
     echo -e "\nLatest Healthcheck Mode..."
+
 elif [[ $1 == "-r" ]] || [[ $1 == "--reboot" ]]; then
     ntype=rebootall
     echo -e "\nReboot Mode..."
+
 elif [[ $1 == "-i" ]] || [[ $1 == "--identify" ]]; then
     ntype=idnodes
     echo -e "\nIdentify Mode..."
+
 elif [[ $1 == "-t" ]] || [[ $1 == "--tagunhealthy" ]]; then
     ntype=tag
     echo -e "\nTagging Mode..."
+
 elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]]; then
     echo "$HELP_MESSAGE"
     exit 0
-else
-    echo "$HELP_MESSAGE"
-    echo -e "Unknown argument '$1' Please try again\n"
-    exit 1
-fi
 
+else
+    echo "$HELP_BRIEF"
+    echo -e "\nUnknown argument '$1' Please try again"
+    exit 1
+
+fi # End argument check
+
+# Host/hostfile Input
 # If a second argument is passed, assume its a nodename or a hostfile. If no second argument is passed grab the list of nodes in a down state in slurm
 if [ -f "$2" ]; then
 
     # arg is a hostfile
-    echo " "
-    echo "Reading from provided hostfile..."
-    echo " " 
+    echo -e "\nReading from provided hostfile...\n"
     for i in $(cat "$2")
     do
       nodes+="$i "
@@ -73,9 +94,7 @@ if [ -f "$2" ]; then
 elif [ -z "$2" ]; then
 
     # no argument provided so pull from sinfo
-    echo " "
-    echo "No hostfile provided. Grabbing down/drain hosts from slurm..."
-    echo " " 
+    echo -e "\nNo hostfile provided. Grabbing down/drain hosts from slurm...\n"
     nodes=$(sinfo -N | grep -E "down|drain" | awk '{print $1}' | sort -u | tr '\n' ' ')
 
 else
@@ -84,11 +103,12 @@ else
     for arg in "${@:2}"; do
       nodes+="$arg "
     done
-    echo " "
-    echo "Hostname(s) provided manually..."
-    echo " " 
+    echo -e "\nHostname(s) provided manually...\n"
 
-fi
+fi # End Host/hostfile input
+
+# deduplicate nodelist
+nodes=$(echo $nodes | tr " " "\n" | sort -u | tr "\n" " ")
 
 # Initialize colors
 RED='\033[0;31m'
@@ -99,6 +119,15 @@ NC='\033[0m' # No Color
 # Initialize Dates
 date=`date -u '+%Y%m%d%H%M'`
 start_timestamp=`date -u +'%F %T'`
+
+# Initialize logs
+# Create logs folder if it doesn't exist
+LOGS_FOLDER="logs"
+if [ ! -d "$LOGS_FOLDER" ]; then
+  mkdir -p "$LOGS_FOLDER"
+fi
+LOG_FILE=$date-nodenurse.log
+LOG_PATH="$LOGS_FOLDER/$LOG_FILE"
 
 # Initialize global variables
 compartmentid=$(cat /opt/oci-hpc/conf/queues.conf | grep targetCompartment: | sort -u | awk '{print $2}')
@@ -153,7 +182,7 @@ display_nodes() {
     printf "%-10s %-25s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial #" "Slurm State"
     echo " " 
     if [ -z "$nodes" ];then
-      echo -e "${YELLOW}Warning:${NC} No hosts to list. There are no hosts that are showing as down/drain in sinfo. Please provide a hostfile" | fold -s -w 65
+      echo -e "${YELLOW}Warning:${NC} No hosts to list. There are no hosts that are showing as down/drain in sinfo. Please provide a hostfile"
 
       echo " "
       echo "exiting..."
@@ -198,22 +227,19 @@ display_nodes() {
     # if any nodes are in alloc state then warn user
     if [[ $allocstate == true ]]; then
       echo -e "${RED}WARNING:${NC} There are hosts in an allocated state."
-      echo -e "Proceed with caution as rebooting nodes that are running jobs is ill-advised and can cause significant customer disruption" | fold -s -w 65
-      echo " "
+      echo -e "Proceed with caution as rebooting nodes that are running jobs is ill-advised and can cause significant customer disruption\n"
     fi
 
     # If there is an ssh failure warn the user
     if [[ $goodssh == false ]]; then
       echo -e "${RED}WARNING:${NC} There are hosts that can't be accesed via SSH"
-      echo -e "Healthchecks and ansible scripts will fail on these hosts."
-      echo " "
+      echo -e "Healthchecks and ansible scripts will fail on these hosts.\n"
     fi
 
     # If instance name is not in /etc/hosts
     if [[ $goodinst == false ]] || [[ $goodslurm == false ]]; then
-	    echo -e "${RED}WARNING:${NC} There are hosts that can't be found in /etc/hosts or in slurm."
-	    echo -e "It is likely that the host(s) don't exist or were mistyped"
-      echo " "
+      echo -e "${RED}WARNING:${NC} There are hosts that can't be found in /etc/hosts or in slurm."
+      echo -e "The host(s) may not exist, were mistyped, or were not correctly added to the cluster\n"
     fi
 
 }
@@ -227,16 +253,16 @@ if [ $ntype == idnodes ]; then
 
 fi
 
-# Main Function for --healtcheck and --latest
+# Main Function for --healthcheck and --latest
 if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
     # Initialize the node count and display node details
     currentnumnodes=1
     display_nodes
 
-    # Prompt user for parallelism if number of nodes is greater than 2 otherwise just run sequentially
-    if [ $numnodes -gt 2 ]; then
-      echo "Do you want to run healthchecks in parallel? This is recommended for large number of hosts (yes/no/quit)" | fold -s -w 65
+    # Prompt user for parallelism if running fresh healthcheck and number of nodes is greater than 2 otherwise just run sequentially
+    if [[ $numnodes -gt 2 ]] && [[ $ntype == healthfresh ]]; then
+      echo "Do you want to run healthchecks in parallel? (yes/no/quit)"
       read response
       case $response in 
         yes|YES|Yes|y|Y)
@@ -244,7 +270,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
         ;;
         no|NO|No|n|N)
           parallel=false
-        ;;	
+        ;;
         q|Q|quit|QUIT|Quit)
          exit 0
         ;;
@@ -255,8 +281,8 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
       esac
     fi
 
-    # If serial then iterate through nodes 1x1
-    if [[ $parallel == false ]]; then
+    # If serial or --latest then iterate through nodes 1x1
+    if [[ $parallel == false ]] || [[ $ntype == healthlatest ]]; then
 
       # Loop through each node and grab the healthcheck
       for n in $nodes
@@ -271,31 +297,22 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
         if [[ $ntype == healthfresh ]]; then
           ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Healthcheck for node $n failed. Ensure that node exists, can accept ssh and /opt/oci-hpc/healthchecks/check_gpu_setup.py exists"; }
         else
-          ssh "$n" "cat /tmp/latest_healthcheck.log" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Gathering the latest healthcheck for node $n failed. Ensure that healthchecks are enabled on the cluster"; }
+          ssh "$n" "cat /tmp/latest_healthcheck.log" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Gathering the latest healthcheck for node $n failed."; echo "       Ensure that healthchecks are enabled on the cluster"; }
         fi
         echo " "
         let currentnumnodes++
       done
     else
-
       # otherwise run healthchecks in parallel
       # output heading
-      echo " " 
+      echo " "
       echo "----------------------------------------------------------------" 
-      echo "Healthchecks from nodes: $nodes" | fold -s -w 75
-      echo " " 
+      echo -e "Healthchecks from nodes: $nodes\n" | fold -s -w 65
       echo -e "${YELLOW}Note:${NC} To simplify output only reporting warnings and errors"
       echo "----------------------------------------------------------------" 
-      echo " " 
-
-      # if fresh or latest
-      if [[ $ntype == healthfresh ]]; then
-        pdsh -S -R ssh -w "$nodes" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py -l ERROR -l WARNING" || goodhealth=false
-	echo " " 
-      else
-        pdsh -S -R ssh -u 5 -w "$nodes" "cat /tmp/latest_healthcheck.log | grep -E "ERROR|WARNING"" || goodhealth=false
-      echo " " 
-      fi
+      echo " "
+      pdsh -S -R ssh -w "$nodes" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py -l ERROR -l WARNING" || goodhealth=false
+      echo " "
 
     fi # End serial/parallel healthchecks 
 
@@ -357,30 +374,28 @@ if [ $ntype == rebootall ]; then
 	do
 
 	  # Generate and display info for each node
-	  echo "----------------------------------------------------------------" | tee -a $date-nodenurse.log
+	  echo "----------------------------------------------------------------" | tee -a $LOG_PATH
           inst=`generate_instance_name $n`
           ocid=`generate_ocid $inst`
 	  serial=`generate_serial $n`
-          echo -e "Rebooting ${YELLOW}$n${NC}" | tee -a $date-nodenurse.log
-	  echo -e "Instance Name: $inst" | tee -a $date-nodenurse.log
-	  echo -e "Serial Number: $serial" | tee -a $date-nodenurse.log
-	  echo -e "OCID: $ocid" | tee -a $date-nodenurse.log
+          echo -e "Rebooting ${YELLOW}$n${NC}" | tee -a $LOG_PATH
+	  echo -e "Instance Name: $inst" | tee -a $LOG_PATH
+	  echo -e "Serial Number: $serial" | tee -a $LOG_PATH
+	  echo -e "OCID: $ocid" | tee -a $LOG_PATH
 	  echo " "
 
 	  # Send hard reboot signal to the node using the generated ocid
-          oci compute instance action --instance-id $ocid --action RESET --auth instance_principal >> $date-nodenurse.log || reboot=false	
+          oci compute instance action --instance-id $ocid --action RESET --auth instance_principal >> $LOG_PATH || reboot=false	
 
 	  # If the oci reboot cmd fails then inform user
 	  if [ $reboot == false ];
 	  then
-            echo " " | tee -a $date-nodenurse.log
-            echo -e "${RED}Reset command failed!${NC}" | tee -a $date-nodenurse.log 
-	    echo " " | tee -a $date-nodenurse.log
+            echo -e "${RED}Reset command failed! Full details in $LOG_PATH${NC}" | tee -a $LOG_PATH 
 	  else 
-	    echo -e "$(date -u '+%Y%m%d%H%M') - ${GREEN}Success${NC} - Hard reset sent to node ${YELLOW}$n${NC}" | tee -a $date-nodenurse.log
+	    echo -e "$(date -u '+%Y%m%d%H%M') - ${GREEN}Success${NC} - Hard reset sent to node ${YELLOW}$n${NC}" | tee -a $LOG_PATH
 	  fi
-	  echo "----------------------------------------------------------------" | tee -a $date-nodenurse.log
-	  echo " " | tee -a $date-nodenurse.log
+	  echo "----------------------------------------------------------------" | tee -a $LOG_PATH
+	  echo " " | tee -a $LOG_PATH
 
         done # End reboot loop
         ;;
@@ -397,7 +412,7 @@ if [ $ntype == rebootall ]; then
 fi
 
 # Main function for tagging hosts unhealthy
-if [ $ntype=tag ]; then
+if [[ $ntype == tag ]]; then
 
     # Display node details
     display_nodes
