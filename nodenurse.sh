@@ -234,24 +234,26 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
     currentnumnodes=1
     display_nodes
 
-    # Prompt user for parallelism
-    echo "Do you want to run healthchecks in parallel? This is recommended for large number of hosts (yes/no/quit)" | fold -s -w 65
-    read response
-    case $response in 
-      yes|YES|Yes|y|Y)
-        parallel=true
-      ;;
-      no|NO|No|n|N)
-        parallel=false
-      ;;	
-      q|Q|quit|QUIT|Quit)
-	exit 0
-	;;
-      *)
+    # Prompt user for parallelism if number of nodes is greater than 2 otherwise just run sequentially
+    if [ $numnodes -gt 2 ]; then
+      echo "Do you want to run healthchecks in parallel? This is recommended for large number of hosts (yes/no/quit)" | fold -s -w 65
+      read response
+      case $response in 
+        yes|YES|Yes|y|Y)
+          parallel=true
+        ;;
+        no|NO|No|n|N)
+          parallel=false
+        ;;	
+        q|Q|quit|QUIT|Quit)
+         exit 0
+        ;;
+        *)
         echo "Invalid input. Please enter yes or no."
-	exit 1
-      ;;
-    esac
+        exit 1
+        ;;
+      esac
+    fi
 
     # If serial then iterate through nodes 1x1
     if [[ $parallel == false ]]; then
