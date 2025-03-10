@@ -33,7 +33,7 @@ Notes:
   hard-coding it to your use case.
 
   - In order for tagging hosts as unhealthy to work properly, your tenancy must be properly
-  whitelisted for unhealthy instance tagging.
+  whitelisted for unhealthy instance tagging and have the correct tag namespace and tags set up.
 
   - $0 automatically deduplicates your provided hostlist.
 "
@@ -132,6 +132,7 @@ LOG_PATH="$LOGS_FOLDER/$LOG_FILE"
 # Initialize global variables
 compartmentid=$(cat /opt/oci-hpc/conf/queues.conf | grep targetCompartment: | sort -u | awk '{print $2}')
 reboot=true
+goodtag=true
 numnodes=$(echo $nodes | wc -w) 
 allocstate=false
 parallel=false
@@ -390,7 +391,7 @@ if [ $ntype == rebootall ]; then
 	  # If the oci reboot cmd fails then inform user
 	  if [ $reboot == false ];
 	  then
-            echo -e "${RED}Reset command failed! Full details in $LOG_PATH${NC}" | tee -a $LOG_PATH 
+            echo -e "${RED}Reset failed on $n! Full details in $LOG_PATH${NC}" | tee -a $LOG_PATH 
 	  else 
 	    echo -e "$(date -u '+%Y%m%d%H%M') - ${GREEN}Success${NC} - Hard reset sent to node ${YELLOW}$n${NC}" | tee -a $LOG_PATH
 	  fi
@@ -417,6 +418,57 @@ if [[ $ntype == tag ]]; then
     # Display node details
     display_nodes
     
+    # ask for confirmation before taggin
+    echo -e "Are you sure you want to mark these nodes as unhealthy? (yes/no)"
+    read response
+    echo " " 
+    case $response in
+
+      yes|Yes|YES|y|Y)
+        echo "Proceeding..."
+	echo " "         
+
+	# loop through list of nodes, output details, send reset signal via ocicli, output success/failure. All output is also sent to a log titled <date>-nodenurse.log
+	for n in $nodes
+	do
+
+	  # Generate and display info for each node
+	  echo "----------------------------------------------------------------" | tee -a $LOG_PATH
+          inst=`generate_instance_name $n`
+          ocid=`generate_ocid $inst`
+	  serial=`generate_serial $n`
+          echo -e "Tagging ${YELLOW}$n${NC} as unhealthy" | tee -a $LOG_PATH
+	  echo -e "Instance Name: $inst" | tee -a $LOG_PATH
+	  echo -e "Serial Number: $serial" | tee -a $LOG_PATH
+	  echo -e "OCID: $ocid" | tee -a $LOG_PATH
+	  echo " "
+
+	  # Send ocid through tagunhealth.py
+          /usr/bin/python3 tagunhealthy.py --instance-id $ocid >> $LOG_PATH || goodtag=false	
+
+	  # If the oci reboot cmd fails then inform user
+	  if [ $goodtag == false ];
+	  then
+            echo -e "${RED}Tagging failed on node $n! Full details in $LOG_PATH${NC}" | tee -a $LOG_PATH 
+	  else 
+	    echo -e "$(date -u '+%Y%m%d%H%M') - ${GREEN}Success${NC} - Node ${YELLOW}$n${NC} marked as unhealthy" | tee -a $LOG_PATH
+	  fi
+	  echo "----------------------------------------------------------------" | tee -a $LOG_PATH
+	  echo " " | tee -a $LOG_PATH
+
+        done # End tagging loop
+        ;;
+
+      no|No|NO|n|N)
+        echo "Aborting..."
+        exit 1
+        ;;
+
+      *)
+        echo "Invalid input. Please enter yes or no."
+        ;;
+    esac
+
     # Prompt user if they are sure they want to mark the listed nodes and warn about tenancy needing to whitelisted and tags set up
 
     # If yes then send nodes to tagging python script

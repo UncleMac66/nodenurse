@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import sys
 import oci
 import argparse
 
@@ -34,4 +35,5 @@ try:
 
 except oci.exceptions.ServiceError as e:
     print(f"Error: {e}")
+    sys.exit(1)
 
