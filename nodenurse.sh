@@ -468,13 +468,5 @@ if [[ $ntype == tag ]]; then
         echo "Invalid input. Please enter yes or no."
         ;;
     esac
-
-    # Prompt user if they are sure they want to mark the listed nodes and warn about tenancy needing to whitelisted and tags set up
-
-    # If yes then send nodes to tagging python script
-
-
-    # If no then exit cleanly
-
-
+    
 fi
