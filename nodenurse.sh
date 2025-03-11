@@ -224,8 +224,7 @@ display_nodes() {
     done
 
     # Display total num of nodes
-    echo "Total: $numnodes Host(s)"
-    echo " "
+    echo -e "Total: $numnodes Host(s)\n"
 
     # if any nodes are in alloc state then warn user
     if [[ $allocstate == true ]]; then
