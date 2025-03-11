@@ -28,7 +28,7 @@ Examples:
   $0 --identify gpu-1 gpu-2   display details about 'gpu-1' and 'gpu-2' then quit.
 
 Notes:
-  - nodenurse.sh gets the compartement OCID from /opt/oci-hpc/conf/queues.conf.
+  - nodenurse.sh gets the compartment OCID from /opt/oci-hpc/conf/queues.conf.
   If you use queues across compartments please double check this value and consider 
   hard-coding it to your use case.
 

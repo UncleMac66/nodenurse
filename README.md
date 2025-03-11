@@ -2,13 +2,16 @@
 
 
 # ./nodenurse.sh
-Helper tool to diagnose, reboot, and tag unhealthy nodes in slurm based GPU cluster set up with [oci-hpc](https://github.com/oracle-quickstart/oci-hpc)
+
+Helper tool to diagnose, reboot, and tag unhealthy nodes in a slurm based GPU cluster. Specifically designed to work out of the box with environments set up with [oci-hpc](https://github.com/oracle-quickstart/oci-hpc)
+
+nodenurse.sh relies on `tagunhealthy.py` and `ncclscout.py` being in the same directory for full functionality
 
 ```
 Usage: ./nodenurse.sh [OPTION] [HOST(S)]
 
 Description:
-  ./nodenurse.sh takes the nodes that are in a down/drain state in slurm, supplied nodename(s), or a hostfile and
+  nodenurse.sh takes the nodes that are in a down/drain state in slurm, supplied nodename(s), or a hostfile and
   can run a fresh healthcheck on them, grab the latest healthcheck, send them through ncclscout.py, or can be used
   to initiate a hard reboot of those nodes.
 
@@ -32,12 +35,14 @@ Examples:
   ./nodenurse.sh --identify gpu-1 gpu-2   display details about 'gpu-1' and 'gpu-2' then quit.
 
 Notes:
-  - ./nodenurse.sh gets the compartement OCID from /opt/oci-hpc/conf/queues.conf.
+  - nodenurse.sh gets the compartment OCID from /opt/oci-hpc/conf/queues.conf.
   If you use queues across compartments please double check this value and consider
   hard-coding it to your use case.
 
   - In order for tagging hosts as unhealthy to work properly, your tenancy must be properly
   whitelisted for unhealthy instance tagging and have the correct tag namespace and tags set up.
 
-  - ./nodenurse.sh automatically deduplicates your provided hostlist.
-```
+  - nodenurse.sh automatically deduplicates your provided hostlist.
+
+  - tagunhealthy.py must be present in same directory as nodenurse.sh for tagging to work
+  ```
