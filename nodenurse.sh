@@ -4,7 +4,7 @@ HELP_MESSAGE="
 Usage: $0 [OPTION] [HOST(S)]
 
 Description:
-  $0 takes the nodes that are in a down/drain state in slurm, supplied nodename(s), or a hostfile and 
+  nodenurse.sh takes the nodes that are in a down/drain state in slurm, supplied nodename(s), or a hostfile and 
   can run a fresh healthcheck on them, grab the latest healthcheck, send them through ncclscout.py, or can be used 
   to initiate a hard reboot of those nodes.
 
@@ -28,14 +28,16 @@ Examples:
   $0 --identify gpu-1 gpu-2   display details about 'gpu-1' and 'gpu-2' then quit.
 
 Notes:
-  - $0 gets the compartement OCID from /opt/oci-hpc/conf/queues.conf.
+  - nodenurse.sh gets the compartement OCID from /opt/oci-hpc/conf/queues.conf.
   If you use queues across compartments please double check this value and consider 
   hard-coding it to your use case.
 
   - In order for tagging hosts as unhealthy to work properly, your tenancy must be properly
   whitelisted for unhealthy instance tagging and have the correct tag namespace and tags set up.
 
-  - $0 automatically deduplicates your provided hostlist.
+  - nodenurse.sh automatically deduplicates your provided hostlist.
+
+  - tagunhealthy.py must be present in same directory as nodenurse.sh for tagging to work
 "
 
 HELP_BRIEF="usage: $0 [-c healthcheck] [-l latest] [-r reboot]
@@ -182,8 +184,8 @@ display_nodes() {
     echo " " 
     printf "%-10s %-25s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial #" "Slurm State"
     echo " " 
-    if [ -z "$nodes" ];then
-      echo -e "${YELLOW}Warning:${NC} No hosts to list. There are no hosts that are showing as down/drain in sinfo. Please provide a hostfile"
+    if [ `echo $nodes | wc -w` -eq 0 ];then
+      echo -e "${YELLOW}Warning:${NC} No hosts to list. There are no hosts that are showing as down/drain in sinfo."
 
       echo " "
       echo "exiting..."
@@ -233,7 +235,7 @@ display_nodes() {
 
     # If there is an ssh failure warn the user
     if [[ $goodssh == false ]]; then
-      echo -e "${RED}WARNING:${NC} There are hosts that can't be accesed via SSH"
+      echo -e "${RED}WARNING:${NC} There are hosts that are inaccessible via SSH"
       echo -e "Healthchecks and ansible scripts will fail on these hosts.\n"
     fi
 
