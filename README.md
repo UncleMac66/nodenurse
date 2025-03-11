@@ -1,6 +1,3 @@
-# oci-gpu-scripts
-
-
 # ./nodenurse.sh
 
 Helper tool to diagnose, reboot, and tag unhealthy nodes in a slurm based GPU cluster. Specifically designed to work out of the box with environments set up with [oci-hpc](https://github.com/oracle-quickstart/oci-hpc)

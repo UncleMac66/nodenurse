@@ -185,9 +185,7 @@ display_nodes() {
     printf "%-10s %-25s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial #" "Slurm State"
     echo " " 
     if [ `echo $nodes | wc -w` -eq 0 ];then
-      echo -e "${YELLOW}Warning:${NC} No hosts to list. There are no hosts that are showing as down/drain in sinfo."
-
-      echo " "
+      echo -e "${YELLOW}Warning:${NC} No hosts to list. There are no hosts that are showing as down/drain in sinfo.\n"
       echo "exiting..."
       exit 0
     fi
