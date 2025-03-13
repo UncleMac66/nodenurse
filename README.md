@@ -25,6 +25,8 @@ Arguments:
                          This is optional. If no hosts are provided nodenurse will pull in nodes
                          that are in a down or drain state in slurm by default.
 
+  -a, --all              Use all hosts that are listed in slurm, not just ones in down/drain state.
+
 Examples:
   ./nodenurse.sh -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
   ./nodenurse.sh -r gpu-1                 sends a hard reboot signal to node 'gpu-1'.

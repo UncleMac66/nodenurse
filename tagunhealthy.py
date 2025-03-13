@@ -15,6 +15,7 @@ if args.region:
     region = args.region
 else:
     region = signer.region
+
 config = {'region': region, 'tenancy': signer.tenancy_id}
 
 # Initialize the OCI ComputeClient

@@ -21,6 +21,8 @@ Arguments:
                          This is optional. If no hosts are provided nodenurse will pull in nodes
                          that are in a down or drain state in slurm by default.
 
+  -a, --all              Use all hosts that are listed in slurm, not just ones in down/drain state.
+
 Examples:
   $0 -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
   $0 -r gpu-1                 sends a hard reboot signal to node 'gpu-1'.
@@ -77,7 +79,7 @@ elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]]; then
 
 else
     echo "$HELP_BRIEF"
-    echo -e "\nUnknown argument '$1' Please try again"
+    echo -e "\nUnknown option '$1' Please try again"
     exit 1
 
 fi # End argument check
@@ -98,6 +100,12 @@ elif [ -z "$2" ]; then
     # no argument provided so pull from sinfo
     echo -e "\nNo hostfile provided. Grabbing down/drain hosts from slurm...\n"
     nodes=$(sinfo -N | grep -E "down|drain" | awk '{print $1}' | sort -u | tr '\n' ' ')
+
+elif [ $2 == "-a" ] || [ $2 == "--all" ]; then
+
+    # all flag is passed so grab all nodes from sinfo
+    echo -e "\nGrabbing all hosts from slurm...\n"
+    nodes=$(sinfo -N -h -o %n | sort -u | tr '\n' ' ')
 
 else
 
@@ -335,12 +343,17 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
         yes|Yes|YES|y|Y)
           echo "Proceeding..."
           echo " "
+	  if [ $(($numnodes % 2)) -ne 0 ]; then
+	    nodes+=" ${nodes%% *}"
+	  fi
 	  for i in $nodes
 	  do
 	    echo $i >> $date-hostfile.tmp
 	  done
 	  python3 ncclscout.py $date-hostfile.tmp
 	  rm $date-hostfile.tmp
+	  mv nccl_test.log $LOGS_FOLDER
+	  mv nccl_run_allreduce.sh.log $LOGS_FOLDER
 	  echo " "
         ;;
         no|No|NO|n|N)
