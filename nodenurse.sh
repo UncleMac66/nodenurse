@@ -352,7 +352,8 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 	  done
 	  python3 ncclscout.py $date-hostfile.tmp
 	  rm $date-hostfile.tmp
-	  mv *.log $LOGS_FOLDER
+	  mv nccl_test.log $LOGS_FOLDER
+	  mv nccl_run_allreduce.sh.log $LOGS_FOLDER
 	  echo " "
         ;;
         no|No|NO|n|N)
