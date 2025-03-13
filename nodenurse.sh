@@ -343,6 +343,10 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
         yes|Yes|YES|y|Y)
           echo "Proceeding..."
           echo " "
+	  if [ $(($numnodes % 2)) -ne 0 ]; then
+	    nodes+=" ${nodes%% *}"
+	  fi
+	  echo $nodes
 	  for i in $nodes
 	  do
 	    echo $i >> $date-hostfile.tmp
