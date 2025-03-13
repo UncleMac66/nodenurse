@@ -346,13 +346,13 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 	  if [ $(($numnodes % 2)) -ne 0 ]; then
 	    nodes+=" ${nodes%% *}"
 	  fi
-	  echo $nodes
 	  for i in $nodes
 	  do
 	    echo $i >> $date-hostfile.tmp
 	  done
 	  python3 ncclscout.py $date-hostfile.tmp
 	  rm $date-hostfile.tmp
+	  mv *.log $LOGS_FOLDER
 	  echo " "
         ;;
         no|No|NO|n|N)
