@@ -4,24 +4,33 @@ HELP_MESSAGE="
 Usage: $0 [OPTION] [HOST(S)]
 
 Description:
-  nodenurse.sh takes the nodes that are in a down/drain state in slurm, supplied nodename(s), or a hostfile and 
-  can run a fresh healthcheck on them, grab the latest healthcheck, send them through ncclscout.py, or can be used 
-  to initiate a hard reboot of those nodes.
+  nodenurse.sh takes supplied nodename(s), or a list of nodenames in a hostfile and can run a variety of functions
+  on them which can be helpful when troubleshooting an OCI-HPC Slurm based cluster.
 
 Options:
   -h, --help             Display this message and exit.
   -c, --healthcheck      Run a fresh healthcheck on the node(s).
   -l, --latest           Gather the latest healthcheck from the node(s).
   -t, --tagunhealthy     Apply the unhealthy tag to the node(s)
+  -T, --createtag        Create the tag and tag namespace neccesary for marking nodes unhealthy
   -r, --reboot           Hard reboot the node(s).
   -i, --identify         Display detail of the node(s) and exit.
+* -n, --nccl             Run allreduce nccl test on the node(s)
+* -s, --ncclscout        Run ncclscout (nccl pair test) on node(s)
+* -u, --update           Bulk update the slurm state
 
 Arguments:
   HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2).
-                         This is optional. If no hosts are provided nodenurse will pull in nodes
-                         that are in a down or drain state in slurm by default.
 
-  -a, --all              Use all hosts that are listed in slurm, not just ones in down/drain state.
+  --all                  Use all hosts that are listed in slurm
+
+* --drain                Use hosts that are in a 'drain' state in slurm
+
+* --down                 Use hosts that are in a 'down' state in slurm
+
+* --idle                 Use hosts that are in a 'idle' state in slurm
+
+  * indicates function is a work in progress
 
 Examples:
   $0 -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
