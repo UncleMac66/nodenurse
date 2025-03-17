@@ -12,7 +12,6 @@ Options:
   -c, --healthcheck      Run a fresh healthcheck on the node(s).
   -l, --latest           Gather the latest healthcheck from the node(s).
   -t, --tagunhealthy     Apply the unhealthy tag to the node(s)
-* -T, --createtag        Create the tag/namespace neccesary for marking unhealthy
   -r, --reboot           Hard reboot the node(s).
   -i, --identify         Display detail of the node(s) and exit.
 * -n, --nccl             Run allreduce nccl test on the node(s)
@@ -52,8 +51,8 @@ Notes:
 "
 
 HELP_BRIEF="usage: $0 [-c, --healthcheck] [-l, --latest] [-r, --reboot]
-                      [-i, --identify] [-t, --tagunhealthy] [-T, --createtag]
-		      [-n, --nccl] [-s, --ncclscout] [-u, --update] [-h, --help]
+                      [-i, --identify] [-t, --tagunhealthy] [-n, --nccl]
+		      [-s, --ncclscout] [-u, --update] [-h, --help]
                       [Arguments {HOST(S),--all,--idle,--drain,--down}]"
 
 # Check if an argument is passed
@@ -82,10 +81,6 @@ elif [[ $1 == "-i" ]] || [[ $1 == "--identify" ]]; then
 elif [[ $1 == "-t" ]] || [[ $1 == "--tagunhealthy" ]]; then
     ntype=tag
     echo -e "\nTagging Mode..."
-
-elif [[ $1 == "-T" ]] || [[ $1 == "--createtag" ]]; then
-    ntype=tag
-    echo -e "\nCreate Tagging Mode..."
 
 elif [[ $1 == "-n" ]] || [[ $1 == "--nccl" ]]; then
     ntype=tag
@@ -502,6 +497,9 @@ if [[ $ntype == tag ]]; then
         echo "Proceeding..."
 	echo " "         
 
+	#### Check to see if tag exists in compartment
+	#### if not ask to create it
+
 	# loop through list of nodes, output details, send reset signal via ocicli, output success/failure. All output is also sent to a log titled <date>-nodenurse.log
 	for n in $nodes
 	do
@@ -545,12 +543,6 @@ if [[ $ntype == tag ]]; then
     
 fi
 
-# Main function for intial creation of the tag/namespace for marking nodes unhealthy
-if [[ $ntype == createtag ]]; then
-
-
-fi
-
 # Main function for full nccl test on nodes
 if [[ $ntype == nccl ]]; then
 
@@ -560,6 +552,20 @@ fi
 # Main function for sending nodes to ncclscout
 if [[ $ntype == ncclscout ]]; then
 
+  display_nodes
+
+  if [ $(($numnodes % 2)) -ne 0 ]; then
+    nodes+=" ${nodes%% *}"
+  fi
+  for i in $nodes
+  do
+    echo $i >> $date-hostfile.tmp
+  done
+  python3 ncclscout.py $date-hostfile.tmp
+  rm $date-hostfile.tmp
+  mv nccl_test.log $LOGS_FOLDER
+  mv nccl_run_allreduce.sh.log $LOGS_FOLDER
+  echo " "
 
 fi
 
