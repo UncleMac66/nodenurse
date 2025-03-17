@@ -1,7 +1,7 @@
 #!/bin/bash
 
 HELP_MESSAGE="
-Usage: $0 [OPTION] [HOST(S)]
+Usage: $0 [OPTION] [ARGUMENT]
 
 Description:
   nodenurse.sh takes supplied nodename(s), or a list of nodenames in a hostfile and can run a variety of functions
@@ -12,23 +12,23 @@ Options:
   -c, --healthcheck      Run a fresh healthcheck on the node(s).
   -l, --latest           Gather the latest healthcheck from the node(s).
   -t, --tagunhealthy     Apply the unhealthy tag to the node(s)
-  -T, --createtag        Create the tag and tag namespace neccesary for marking nodes unhealthy
+* -T, --createtag        Create the tag/namespace neccesary for marking unhealthy
   -r, --reboot           Hard reboot the node(s).
   -i, --identify         Display detail of the node(s) and exit.
 * -n, --nccl             Run allreduce nccl test on the node(s)
-* -s, --ncclscout        Run ncclscout (nccl pair test) on node(s)
-* -u, --update           Bulk update the slurm state
+* -s, --ncclscout        Run ncclscout (nccl pair test) on the node(s)
+* -u, --update           Update the slurm state on the node(s)
 
 Arguments:
   HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2).
 
   --all                  Use all hosts that are listed in slurm
 
-* --drain                Use hosts that are in a 'drain' state in slurm
+  --drain                Use hosts that are in a 'drain' state in slurm
 
-* --down                 Use hosts that are in a 'down' state in slurm
+  --down                 Use hosts that are in a 'down' state in slurm
 
-* --idle                 Use hosts that are in a 'idle' state in slurm
+  --idle                 Use hosts that are in a 'idle' state in slurm
 
   * indicates function is a work in progress
 
@@ -39,7 +39,7 @@ Examples:
   $0 --identify gpu-1 gpu-2   display details about 'gpu-1' and 'gpu-2' then quit.
 
 Notes:
-  - nodenurse.sh gets the compartment OCID from /opt/oci-hpc/conf/queues.conf.
+  - nodenurse.sh gets compartment OCID from /opt/oci-hpc/conf/queues.conf.
   If you use queues across compartments please double check this value and consider 
   hard-coding it to your use case.
 
@@ -51,9 +51,10 @@ Notes:
   - tagunhealthy.py must be present in same directory as nodenurse.sh for tagging to work
 "
 
-HELP_BRIEF="usage: $0 [-c healthcheck] [-l latest] [-r reboot]
-                      [-i identify] [-t tagunhealthy] [-h help]
-                      [OPTION {HOST(S)}]"
+HELP_BRIEF="usage: $0 [-c, --healthcheck] [-l, --latest] [-r, --reboot]
+                      [-i, --identify] [-t, --tagunhealthy] [-T, --createtag]
+		      [-n, --nccl] [-s, --ncclscout] [-u, --update] [-h, --help]
+                      [Arguments {HOST(S),--all,--idle,--drain,--down}]"
 
 # Check if an argument is passed
 if [ -z "$1" ]; then
@@ -107,14 +108,37 @@ if [ -f "$2" ]; then
 elif [ -z "$2" ]; then
 
     # no argument provided so pull from sinfo
-    echo -e "\nNo hostfile provided. Grabbing down/drain hosts from slurm...\n"
-    nodes=$(sinfo -N | grep -E "down|drain" | awk '{print $1}' | sort -u | tr '\n' ' ')
+    echo -e "\nNo hosts provided.\n\nPlease provide hosts manually, or specify a slurm status (i.e. --idle, --down, --all)\n"
 
 elif [ $2 == "-a" ] || [ $2 == "--all" ]; then
 
     # all flag is passed so grab all nodes from sinfo
     echo -e "\nGrabbing all hosts from slurm...\n"
-    nodes=$(sinfo -N -h -o %n | sort -u | tr '\n' ' ')
+    nodes=$(sinfo -h -o %n | sort -u | tr '\n' ' ')
+
+elif [ $2 == "--down" ]; then
+
+    # down flag is passed so grab all nodes from sinfo
+    echo -e "\nGrabbing hosts from slurm marked as 'down'...\n"
+    nodes=$(sinfo -N | grep "down" | awk '{print $1}' | sort -u | tr '\n' ' ')
+
+elif [ $2 == "--drain" ]; then
+
+    # drain flag is passed so grab all nodes from sinfo
+    echo -e "\nGrabbing hosts from slurm marked as 'drain'...\n"
+    nodes=$(sinfo -N | grep "drain" | awk '{print $1}' | sort -u | tr '\n' ' ')
+
+elif [ $2 == "--alldown" ] || [ $2 == "-dd" ]; then
+
+    # down/drain flag is passed so grab all nodes from sinfo
+    echo -e "\nGrabbing hosts from slurm marked as 'down' and 'drain'...\n"
+    nodes=$(sinfo -N | grep -E "drain|down" | awk '{print $1}' | sort -u | tr '\n' ' ')
+
+elif [ $2 == "--idle" ]; then
+
+    # all flag is passed so grab all nodes from sinfo
+    echo -e "\nGrabbing hosts from slurm marked as 'idle'...\n"
+    nodes=$(sinfo -N | grep "idle" | awk '{print $1}' | sort -u | tr '\n' ' ')
 
 else
 
@@ -159,6 +183,7 @@ goodhealth=true
 goodssh=true
 goodinst=true
 goodslurm=true
+goodstate=true
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's instance name in the OCI console
 generate_instance_name() {
@@ -202,7 +227,7 @@ display_nodes() {
     printf "%-10s %-25s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial #" "Slurm State"
     echo " " 
     if [ `echo $nodes | wc -w` -eq 0 ];then
-      echo -e "${YELLOW}Warning:${NC} No hosts to list. There are no hosts that are showing as down/drain in sinfo.\n"
+      echo -e "${YELLOW}Warning:${NC} No hosts to list.\n"
       echo "exiting..."
       exit 0
     fi
@@ -233,13 +258,25 @@ display_nodes() {
 	goodslurm=false
       fi
 
+      if [[ $state == "drain" ]] || [[ $state == "down" ]]; then
+	goodstate=false
+      fi
+
       # output node data
       printf "%-10s %-25s %-15s %-10s\n" "$n" "$inst" "$serial" "$state"
       echo " "
     done
 
     # Display total num of nodes
-    echo -e "Total: $numnodes Host(s)\n"
+    echo -e "Total: $numnodes Distinct host(s)\n"
+
+    # If down/drain nodes then display reasons
+    if [ -n "$(sinfo -R -h)" ] && [ $goodstate == "false" ];then
+      echo -e "More detail on down/drain nodes:\n"
+      sinfo -R -o "%10n %6t %E" | head -1
+      sinfo -R -o "%10n %6t %E" | grep --color=always -E "$(echo $nodes | tr " " "|")"
+      echo ""
+    fi
 
     # if any nodes are in alloc state then warn user
     if [[ $allocstate == true ]]; then
