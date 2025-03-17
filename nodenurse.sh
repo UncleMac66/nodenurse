@@ -188,7 +188,7 @@ generate_slurm_state() {
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's serial number
 generate_serial() {
-    outputserial=`ssh $1 "sudo dmidecode -s system-serial-number" || echo -e "Error: SSH"`
+    outputserial=`ssh -o "ConnectTimeout=5" $1 "sudo dmidecode -s system-serial-number" || echo -e "Error: SSH"`
     echo $outputserial
 }
 
@@ -312,9 +312,9 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
 	# if fresh or latest
         if [[ $ntype == healthfresh ]]; then
-          ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Healthcheck for node $n failed. Ensure that node exists, can accept ssh and /opt/oci-hpc/healthchecks/check_gpu_setup.py exists"; }
+          ssh -o "ConnectTimeout=5" "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Healthcheck for node $n failed. Ensure that node exists, can accept ssh and /opt/oci-hpc/healthchecks/check_gpu_setup.py exists"; }
         else
-          ssh "$n" "cat /tmp/latest_healthcheck.log" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Gathering the latest healthcheck for node $n failed."; echo "       Ensure that healthchecks are enabled on the cluster"; }
+          ssh -o "ConnectTimeout=5" "$n" "cat /tmp/latest_healthcheck.log" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Gathering the latest healthcheck for node $n failed."; echo "       Ensure that healthchecks are enabled on the cluster"; }
         fi
         echo " "
         let currentnumnodes++
@@ -328,7 +328,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
       echo -e "${YELLOW}Note:${NC} To simplify output only reporting warnings and errors"
       echo "----------------------------------------------------------------" 
       echo " "
-      pdsh -S -R ssh -w "$nodes" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py -l ERROR -l WARNING" || goodhealth=false
+      pdsh -S -R ssh -t 5 -w "$nodes" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py -l ERROR -l WARNING" || goodhealth=false
       echo " "
 
     fi # End serial/parallel healthchecks 
