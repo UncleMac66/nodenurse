@@ -83,6 +83,22 @@ elif [[ $1 == "-t" ]] || [[ $1 == "--tagunhealthy" ]]; then
     ntype=tag
     echo -e "\nTagging Mode..."
 
+elif [[ $1 == "-T" ]] || [[ $1 == "--createtag" ]]; then
+    ntype=tag
+    echo -e "\nCreate Tagging Mode..."
+
+elif [[ $1 == "-n" ]] || [[ $1 == "--nccl" ]]; then
+    ntype=tag
+    echo -e "\nFull NCCL Mode..."
+
+elif [[ $1 == "-s" ]] || [[ $1 == "--ncclscout" ]]; then
+    ntype=tag
+    echo -e "\nncclscout Mode..."
+
+elif [[ $1 == "-u" ]] || [[ $1 == "--update" ]]; then
+    ntype=tag
+    echo -e "\nUpdate Mode..."
+
 elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]]; then
     echo "$HELP_MESSAGE"
     exit 0
@@ -528,3 +544,28 @@ if [[ $ntype == tag ]]; then
     esac
     
 fi
+
+# Main function for intial creation of the tag/namespace for marking nodes unhealthy
+if [[ $ntype == createtag ]]; then
+
+
+fi
+
+# Main function for full nccl test on nodes
+if [[ $ntype == nccl ]]; then
+
+
+fi
+
+# Main function for sending nodes to ncclscout
+if [[ $ntype == ncclscout ]]; then
+
+
+fi
+
+# Main function for updating hosts
+if [[ $ntype == update ]]; then
+
+
+fi
+
