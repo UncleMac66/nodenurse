@@ -16,7 +16,7 @@ Options:
   -i, --identify         Display detail of the node(s) and exit.
 * -n, --nccl             Run allreduce nccl test on the node(s)
 * -s, --ncclscout        Run ncclscout (nccl pair test) on the node(s)
-* -u, --update           Update the slurm state on the node(s)
+  -u, --update           Update the slurm state on the node(s)
 
 Arguments:
   HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2).
@@ -83,15 +83,15 @@ elif [[ $1 == "-t" ]] || [[ $1 == "--tagunhealthy" ]]; then
     echo -e "\nTagging Mode..."
 
 elif [[ $1 == "-n" ]] || [[ $1 == "--nccl" ]]; then
-    ntype=tag
+    ntype=nccl
     echo -e "\nFull NCCL Mode..."
 
 elif [[ $1 == "-s" ]] || [[ $1 == "--ncclscout" ]]; then
-    ntype=tag
+    ntype=ncclscout
     echo -e "\nncclscout Mode..."
 
 elif [[ $1 == "-u" ]] || [[ $1 == "--update" ]]; then
-    ntype=tag
+    ntype=update
     echo -e "\nUpdate Mode..."
 
 elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]]; then
@@ -119,7 +119,7 @@ if [ -f "$2" ]; then
 elif [ -z "$2" ]; then
 
     # no argument provided so pull from sinfo
-    echo -e "\nNo hosts provided.\n\nPlease provide hosts manually, or specify a slurm status (i.e. --idle, --down, --all)\n"
+    echo -e "\nNo hosts provided.\n\nPlease provide hosts manually, or specify a slurm status (i.e. --idle, --down, --drain, --all)\n"
 
 elif [ $2 == "-a" ] || [ $2 == "--all" ]; then
 
@@ -150,6 +150,13 @@ elif [ $2 == "--idle" ]; then
     # all flag is passed so grab all nodes from sinfo
     echo -e "\nGrabbing hosts from slurm marked as 'idle'...\n"
     nodes=$(sinfo -N | grep "idle" | awk '{print $1}' | sort -u | tr '\n' ' ')
+
+elif [ "${2:0:1}" == "-" ]; then
+
+    # arg is a mistyped flag so quit
+    echo -e "\nUnknown argument '$2'"
+    echo -e "\nPlease provide hosts manually, or specify a slurm status (i.e. --idle, --down, --drain, --all)"
+    exit 1
 
 else
 
@@ -546,6 +553,7 @@ fi
 # Main function for full nccl test on nodes
 if [[ $ntype == nccl ]]; then
 
+  exit 0
 
 fi
 
@@ -554,9 +562,14 @@ if [[ $ntype == ncclscout ]]; then
 
   display_nodes
 
+  if [ $numnodes == 1 ]; then
+    echo -e "\nMust have at least 2 nodes!"
+    exit 1
+  fi
   if [ $(($numnodes % 2)) -ne 0 ]; then
     nodes+=" ${nodes%% *}"
   fi
+
   for i in $nodes
   do
     echo $i >> $date-hostfile.tmp
@@ -565,13 +578,100 @@ if [[ $ntype == ncclscout ]]; then
   rm $date-hostfile.tmp
   mv nccl_test.log $LOGS_FOLDER
   mv nccl_run_allreduce.sh.log $LOGS_FOLDER
-  echo " "
+  echo ""
 
 fi
 
 # Main function for updating hosts
 if [[ $ntype == update ]]; then
 
+  display_nodes
+
+  echo -e "Select option:
+1. Set node(s) to 'resume'
+2. Set node(s) to 'drain'
+3. Set node(s) to 'down'
+4. Create a 2 hour maintenance reservation on node(s)
+5. Quit
+  "
+  read response
+  case $response in
+    1) 
+       sudo scontrol update nodename="$nodes" state=resume
+       if [ $? -ne 0 ]; then
+	 echo -e "\nExiting..."
+	 exit 1
+       fi
+       sleep 2
+       display_nodes
+       exit 0
+       ;;
+    2)
+       echo "Enter a reason:"
+       read reason
+       sudo scontrol update nodename="$nodes" state=drain reason="$reason"
+       if [ $? -ne 0 ]; then
+	 echo -e "\nExiting..."
+	 exit 1
+       fi
+       sleep 1
+       display_nodes
+       exit 0
+       ;;
+
+    3) 
+       echo "Enter a reason:"
+       read reason
+       sudo scontrol update nodename="$nodes" state=down reason="$reason"
+       if [ $? -ne 0 ]; then
+	 echo -e "\nExiting..."
+	 exit 1
+       fi
+       sleep 1
+       display_nodes
+       exit 0
+       ;;
+    4) 
+       sudo scontrol create reservation starttime=`date -u +'%FT%T'` flags=maint,ignore_jobs user=$USER duration=120 nodes="$nodes" && sleep 1 
+       if [ $? -ne 0 ]; then
+	 echo -e "\nExiting..."
+	 exit 1
+       fi
+       for i in $nodes
+       do
+         s=`generate_slurm_state $i`
+         if [ $s == "drain" ] || [ $s == "down" ]; then
+           sudo scontrol update nodename="$i" state=resume
+	 fi
+       done
+       resname=`sinfo --reservation | tail -1 | grep "$USER" | awk '{print $1}'`
+       if [ -z $resname ];then resname="<RESV_NAME>";fi
+
+       echo -e "\n  Reservation created and nodes set to 'maint' state.
+
+  To schedule jobs on these nodes use the following commands
+
+  ### run cmd samples ###
+
+  sbatch -N <# nodes> --reservation=$resname example.sbatch
+
+  srun -w <specific nodename> --reservation=$resname --gpus=8 <cmd>
+
+  ### To take out of 'maint' state ###
+
+  sudo scontrol delete reservation=$resname
+
+  ### For more details ###
+
+  scontrol show reservation
+
+Current Reservations:"
+      sinfo --reservation
+      echo ""
+      ;;
+    5) exit 0 ;;
+    *) echo -e "Invalid Input\n"; exit 1 ;;
+  esac  
 
 fi
 
