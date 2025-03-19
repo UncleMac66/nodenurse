@@ -235,6 +235,30 @@ generate_serial() {
     echo $outputserial
 }
 
+# Function to send nodes through ncclscout
+nccl_scout() {
+
+    if [ $numnodes == 1 ]; then
+      echo -e "\nMust have at least 2 nodes!"
+      exit 1
+    fi
+    if [ $(($numnodes % 2)) -ne 0 ]; then
+      nodes+=" ${nodes%% *}"
+    fi
+
+    for i in $nodes
+    do
+      echo $i >> $date-hostfile.tmp
+    done
+
+    python3 ncclscout.py $date-hostfile.tmp
+    rm $date-hostfile.tmp
+    mv nccl_test.log $LOGS_FOLDER
+    mv nccl_run_allreduce.sh.log $LOGS_FOLDER
+    echo ""
+
+}
+
 # Function displays the list of hosts along with relevant information, checking for nodes that can't be ssh'd or are in an allocated state in slurm
 display_nodes() {
 
@@ -407,19 +431,8 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
         yes|Yes|YES|y|Y)
           echo "Proceeding..."
           echo " "
-	  if [ $(($numnodes % 2)) -ne 0 ]; then
-	    nodes+=" ${nodes%% *}"
-	  fi
-	  for i in $nodes
-	  do
-	    echo $i >> $date-hostfile.tmp
-	  done
-	  python3 ncclscout.py $date-hostfile.tmp
-	  rm $date-hostfile.tmp
-	  mv nccl_test.log $LOGS_FOLDER
-	  mv nccl_run_allreduce.sh.log $LOGS_FOLDER
-	  echo " "
-        ;;
+	  nccl_scout
+       ;;
         no|No|NO|n|N)
       	exit 1
         ;;
@@ -494,7 +507,17 @@ if [[ $ntype == tag ]]; then
     # Display node details
     display_nodes
     
-    # ask for confirmation before taggin
+    # Check if tag namespace is properly set up
+    # if not then set them up properly
+    echo -e "Checking if tags are properly set up..."
+    /usr/bin/python3 tagunhealthy.py --check
+    if [ $? -gt 0 ]; then
+      echo -e "Setting up tags...\n"
+      /usr/bin/python3 tagunhealthy.py --setup
+      echo ""
+    fi
+    
+    # ask for confirmation before tagging
     echo -e "Are you sure you want to mark these nodes as unhealthy? (yes/no)"
     read response
     echo " " 
@@ -553,101 +576,87 @@ fi
 # Main function for full nccl test on nodes
 if [[ $ntype == nccl ]]; then
 
-  exit 0
+    exit 0
 
 fi
 
 # Main function for sending nodes to ncclscout
 if [[ $ntype == ncclscout ]]; then
 
-  display_nodes
-
-  if [ $numnodes == 1 ]; then
-    echo -e "\nMust have at least 2 nodes!"
-    exit 1
-  fi
-  if [ $(($numnodes % 2)) -ne 0 ]; then
-    nodes+=" ${nodes%% *}"
-  fi
-
-  for i in $nodes
-  do
-    echo $i >> $date-hostfile.tmp
-  done
-  python3 ncclscout.py $date-hostfile.tmp
-  rm $date-hostfile.tmp
-  mv nccl_test.log $LOGS_FOLDER
-  mv nccl_run_allreduce.sh.log $LOGS_FOLDER
-  echo ""
+    display_nodes
+    nccl_scout
 
 fi
 
 # Main function for updating hosts
 if [[ $ntype == update ]]; then
 
-  display_nodes
+    display_nodes
 
-  echo -e "Select option:
+    echo -e "Select option:
 1. Set node(s) to 'resume'
 2. Set node(s) to 'drain'
 3. Set node(s) to 'down'
 4. Create a 2 hour maintenance reservation on node(s)
 5. Quit
   "
-  read response
-  case $response in
-    1) 
-       sudo scontrol update nodename="$nodes" state=resume
-       if [ $? -ne 0 ]; then
-	 echo -e "\nExiting..."
-	 exit 1
-       fi
-       sleep 2
-       display_nodes
-       exit 0
-       ;;
-    2)
-       echo "Enter a reason:"
-       read reason
-       sudo scontrol update nodename="$nodes" state=drain reason="$reason"
-       if [ $? -ne 0 ]; then
-	 echo -e "\nExiting..."
-	 exit 1
-       fi
-       sleep 1
-       display_nodes
-       exit 0
-       ;;
+    read response
+    case $response in
+      1) 
+         sudo scontrol update nodename="$nodes" state=resume
+         if [ $? -ne 0 ]; then
+           echo -e "\nExiting..."
+           exit 1
+         fi
+         sleep 2
+         display_nodes
+         exit 0
+         ;;
+      2)
+         echo "Enter a reason:"
+         read reason
+         sudo scontrol update nodename="$nodes" state=drain reason="$reason"
+         if [ $? -ne 0 ]; then
+           echo -e "\nExiting..."
+           exit 1
+         fi
+         sleep 1
+         display_nodes
+         exit 0
+         ;;
 
-    3) 
-       echo "Enter a reason:"
-       read reason
-       sudo scontrol update nodename="$nodes" state=down reason="$reason"
-       if [ $? -ne 0 ]; then
-	 echo -e "\nExiting..."
-	 exit 1
-       fi
-       sleep 1
-       display_nodes
-       exit 0
-       ;;
-    4) 
-       sudo scontrol create reservation starttime=`date -u +'%FT%T'` flags=maint,ignore_jobs user=$USER duration=120 nodes="$nodes" && sleep 1 
-       if [ $? -ne 0 ]; then
-	 echo -e "\nExiting..."
-	 exit 1
-       fi
-       for i in $nodes
-       do
-         s=`generate_slurm_state $i`
-         if [ $s == "drain" ] || [ $s == "down" ]; then
-           sudo scontrol update nodename="$i" state=resume
-	 fi
-       done
-       resname=`sinfo --reservation | tail -1 | grep "$USER" | awk '{print $1}'`
-       if [ -z $resname ];then resname="<RESV_NAME>";fi
+      3) 
+         echo "Enter a reason:"
+         read reason
+         sudo scontrol update nodename="$nodes" state=down reason="$reason"
+         if [ $? -ne 0 ]; then
+           echo -e "\nExiting..."
+           exit 1
+         fi
+         sleep 1
+         display_nodes
+         exit 0
+         ;;
 
-       echo -e "\n  Reservation created and nodes set to 'maint' state.
+      4) 
+         sudo scontrol create reservation starttime=`date -u +'%FT%T'` flags=maint,ignore_jobs user=$USER duration=120 nodes="$nodes" && sleep 1 
+         if [ $? -ne 0 ]; then
+           echo -e "\nExiting..."
+           exit 1
+         fi
+	 
+         for i in $nodes
+         do
+           s=`generate_slurm_state $i`
+           if [ $s == "drain" ] || [ $s == "down" ]; then
+             sudo scontrol update nodename="$i" state=resume
+           fi
+         done
+
+         resname=`sinfo --reservation | tail -1 | grep "$USER" | awk '{print $1}'`
+         if [ -z $resname ];then resname="<RESV_NAME>";fi
+
+         echo -e "\n  Reservation created and nodes set to 'maint' state.
 
   To schedule jobs on these nodes use the following commands
 
@@ -666,12 +675,15 @@ if [[ $ntype == update ]]; then
   scontrol show reservation
 
 Current Reservations:"
-      sinfo --reservation
-      echo ""
-      ;;
-    5) exit 0 ;;
-    *) echo -e "Invalid Input\n"; exit 1 ;;
-  esac  
+        sinfo --reservation
+        echo ""
+        ;;
+
+      5) exit 0 ;;
+
+      *) echo -e "Invalid Input\n"; exit 1 ;;
+
+    esac  
 
 fi
 
