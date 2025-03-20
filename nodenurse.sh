@@ -13,9 +13,9 @@ Options:
   -l, --latest           Gather the latest healthcheck from the node(s).
   -t, --tagunhealthy     Apply the unhealthy tag to the node(s)
   -r, --reboot           Hard reboot the node(s).
-  -i, --identify         Display detail of the node(s) and exit.
+  -i, --identify         Display full details of the node(s) and exit.
 * -n, --nccl             Run allreduce nccl test on the node(s)
-* -s, --ncclscout        Run ncclscout (nccl pair test) on the node(s)
+  -s, --ncclscout        Run ncclscout (nccl pair test) on the node(s)
   -u, --update           Update the slurm state on the node(s)
 
 Arguments:
@@ -28,6 +28,8 @@ Arguments:
   --down                 Use hosts that are in a 'down' state in slurm
 
   --idle                 Use hosts that are in a 'idle' state in slurm
+
+  --partition,-p         Use all nodes in a specified slurm partition name (i.e. compute)
 
   * indicates function is a work in progress
 
@@ -118,7 +120,7 @@ if [ -f "$2" ]; then
 
 elif [ -z "$2" ]; then
 
-    # no argument provided so pull from sinfo
+    # no argument provided so ask for a slurm status
     echo -e "\nNo hosts provided.\n\nPlease provide hosts manually, or specify a slurm status (i.e. --idle, --down, --drain, --all)\n"
 
 elif [ $2 == "-a" ] || [ $2 == "--all" ]; then
@@ -126,6 +128,12 @@ elif [ $2 == "-a" ] || [ $2 == "--all" ]; then
     # all flag is passed so grab all nodes from sinfo
     echo -e "\nGrabbing all hosts from slurm...\n"
     nodes=$(sinfo -h -o %n | sort -u | tr '\n' ' ')
+
+elif [ $2 == "-p" ] || [ $2 == "--partition" ]; then
+
+    # partition flag is passed so grab all nodes from specified partition
+    echo -e "\nGrabbing all hosts from $3 partition...\n"
+    nodes=$(sinfo -p "$3" -h -o %n | sort -u | tr '\n' ' ')
 
 elif [ $2 == "--down" ]; then
 
@@ -238,7 +246,7 @@ generate_serial() {
 # Function to send nodes through ncclscout
 nccl_scout() {
 
-    if [ $numnodes == 1 ]; then
+    if [ $numnodes = 1 ]; then
       echo -e "\nMust have at least 2 nodes!"
       exit 1
     fi
@@ -260,14 +268,20 @@ nccl_scout() {
 }
 
 # Function displays the list of hosts along with relevant information, checking for nodes that can't be ssh'd or are in an allocated state in slurm
-display_nodes() {
+display_nodes(){
 
     echo "----------------------------------------------------------------"
     echo "----------------------" $start_timestamp "---------------------"
     echo "----------------------------------------------------------------"
     echo " " 
-    printf "%-10s %-25s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial #" "Slurm State"
-    echo " " 
+    if [[ $1 == "full" ]]; then
+      printf "%-10s %-25s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial #" "Slurm State"
+      echo " " 
+    else
+      printf "%-10s %-25s %-10s\n" "Hostname" "Instance Name" "Slurm State"
+      echo " " 
+    fi
+
     if [ `echo $nodes | wc -w` -eq 0 ];then
       echo -e "${YELLOW}Warning:${NC} No hosts to list.\n"
       echo "exiting..."
@@ -281,15 +295,10 @@ display_nodes() {
       # Gather details
       inst=`generate_instance_name $n`
       state=`generate_slurm_state $n`
-      serial=`generate_serial $n`
       
       # Node error checking
       if [[ $state =~ "mix" ]] || [[ $state =~ "alloc" ]]; then
         allocstate=true
-      fi
-
-      if [[ $serial == "Error: SSH" ]]; then
-	goodssh=false
       fi
 
       if [[ $inst == "Not Found" ]]; then
@@ -305,8 +314,26 @@ display_nodes() {
       fi
 
       # output node data
-      printf "%-10s %-25s %-15s %-10s\n" "$n" "$inst" "$serial" "$state"
-      echo " "
+      if [[ $1 == "full" ]]; then
+
+        serial=`generate_serial $n`
+	ocid=`generate_ocid $inst`
+
+        if [[ $serial == "Error: SSH" ]]; then
+          goodssh=false
+        fi
+
+	printf "%-10s %-25s %-15s %-10s\n" "$n" "$inst" "$serial" "$state"
+        echo -e "\u27A1 OCID: $ocid"
+        echo " "
+
+      else
+
+        printf "%-10s %-25s %-10s\n" "$n" "$inst" "$state"
+        echo " "
+
+      fi
+
     done
 
     # Display total num of nodes
@@ -344,7 +371,7 @@ display_nodes() {
 if [ $ntype == idnodes ]; then
 
     # Just display the node information and exit
-    display_nodes
+    display_nodes full
     exit 0
 
 fi
@@ -491,7 +518,7 @@ if [ $ntype == rebootall ]; then
         ;;
 
       no|No|NO|n|N)
-        echo "Aborting..."
+        echo "Exiting..."
         exit 1
         ;;
 
@@ -512,9 +539,27 @@ if [[ $ntype == tag ]]; then
     echo -e "Checking if tags are properly set up..."
     /usr/bin/python3 tagunhealthy.py --check
     if [ $? -gt 0 ]; then
-      echo -e "Setting up tags...\n"
-      /usr/bin/python3 tagunhealthy.py --setup
-      echo ""
+      echo -e "Want nodenurse to set up tagging? (yes/no)"
+      read response
+      case $response in
+        yes|Yes|YES|y|Y)     
+          echo -e "Setting up tags...\n"
+          /usr/bin/python3 tagunhealthy.py --setup
+          if [ $? -gt 0 ];then 
+            echo -e "${RED}Error setting up tagging!${NC}"
+	    exit 1
+	  fi
+          echo ""
+	  ;;
+        no|No|NO|n|N)
+	  echo -e "Exiting...\n"
+	  exit 0
+	  ;;
+	*)
+	  echo "Exiting..."
+          exit 1
+          ;;
+      esac
     fi
     
     # ask for confirmation before tagging
@@ -562,7 +607,7 @@ if [[ $ntype == tag ]]; then
         ;;
 
       no|No|NO|n|N)
-        echo "Aborting..."
+        echo "Exiting..."
         exit 1
         ;;
 
@@ -603,12 +648,15 @@ if [[ $ntype == update ]]; then
     read response
     case $response in
       1) 
-         sudo scontrol update nodename="$nodes" state=resume
-         if [ $? -ne 0 ]; then
-           echo -e "\nExiting..."
-           exit 1
-         fi
-         sleep 2
+         for i in $nodes
+         do
+           s=`generate_slurm_state $i`
+           if [[ "$s" =~ "idle|mix|alloc" ]]; then
+             sudo scontrol update nodename="$i" state=resume
+           fi
+         done
+	 echo ""
+         sleep 1
          display_nodes
          exit 0
          ;;
@@ -620,6 +668,7 @@ if [[ $ntype == update ]]; then
            echo -e "\nExiting..."
            exit 1
          fi
+	 echo ""
          sleep 1
          display_nodes
          exit 0
@@ -633,6 +682,7 @@ if [[ $ntype == update ]]; then
            echo -e "\nExiting..."
            exit 1
          fi
+	 echo ""
          sleep 1
          display_nodes
          exit 0
