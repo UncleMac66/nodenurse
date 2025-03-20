@@ -5,12 +5,11 @@ Helper tool to diagnose, reboot, and tag unhealthy nodes in a slurm based GPU cl
 nodenurse.sh relies on `tagunhealthy.py` and `ncclscout.py` being in the same directory for full functionality
 
 ```
-Usage: ./nodenurse.sh [OPTION] [HOST(S)]
+Usage: ./nodenurse.sh [OPTION] [ARGUMENT]
 
 Description:
-  nodenurse.sh takes the nodes that are in a down/drain state in slurm, supplied nodename(s), or a hostfile and
-  can run a fresh healthcheck on them, grab the latest healthcheck, send them through ncclscout.py, or can be used
-  to initiate a hard reboot of those nodes.
+  nodenurse.sh takes supplied nodename(s), or a list of nodenames in a hostfile and can run a variety of functions
+  on them which can be helpful when troubleshooting an OCI-HPC Slurm based cluster.
 
 Options:
   -h, --help             Display this message and exit.
@@ -18,14 +17,25 @@ Options:
   -l, --latest           Gather the latest healthcheck from the node(s).
   -t, --tagunhealthy     Apply the unhealthy tag to the node(s)
   -r, --reboot           Hard reboot the node(s).
-  -i, --identify         Display detail of the node(s) and exit.
+  -i, --identify         Display full details of the node(s) and exit.
+* -n, --nccl             Run allreduce nccl test on the node(s).
+  -s, --ncclscout        Run ncclscout (nccl pair test) on the node(s).
+  -u, --update           Update the slurm state on the node(s).
 
 Arguments:
   HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2).
-                         This is optional. If no hosts are provided nodenurse will pull in nodes
-                         that are in a down or drain state in slurm by default.
 
-  -a, --all              Use all hosts that are listed in slurm, not just ones in down/drain state.
+  --all,-a               Use all hosts that are listed in slurm.
+
+  --drain                Use hosts that are in a 'drain' state in slurm.
+
+  --down                 Use hosts that are in a 'down' state in slurm.
+
+  --idle                 Use hosts that are in a 'idle' state in slurm.
+
+  --partition,-p <name>  Use all nodes in a specified slurm partition name (i.e. compute).
+
+  * indicates function is a work in progress
 
 Examples:
   ./nodenurse.sh -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
@@ -34,7 +44,7 @@ Examples:
   ./nodenurse.sh --identify gpu-1 gpu-2   display details about 'gpu-1' and 'gpu-2' then quit.
 
 Notes:
-  - nodenurse.sh gets the compartment OCID from /opt/oci-hpc/conf/queues.conf.
+  - nodenurse.sh gets compartment OCID from /opt/oci-hpc/conf/queues.conf.
   If you use queues across compartments please double check this value and consider
   hard-coding it to your use case.
 
@@ -43,5 +53,5 @@ Notes:
 
   - nodenurse.sh automatically deduplicates your provided hostlist.
 
-  - tagunhealthy.py must be present in same directory as nodenurse.sh for tagging to work
-  ```
+  - tagunhealthy.py must be present in same directory as nodenurse.sh for tagging to work.
+```
