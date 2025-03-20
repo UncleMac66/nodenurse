@@ -14,22 +14,22 @@ Options:
   -t, --tagunhealthy     Apply the unhealthy tag to the node(s)
   -r, --reboot           Hard reboot the node(s).
   -i, --identify         Display full details of the node(s) and exit.
-* -n, --nccl             Run allreduce nccl test on the node(s)
-  -s, --ncclscout        Run ncclscout (nccl pair test) on the node(s)
-  -u, --update           Update the slurm state on the node(s)
+* -n, --nccl             Run allreduce nccl test on the node(s).
+  -s, --ncclscout        Run ncclscout (nccl pair test) on the node(s).
+  -u, --update           Update the slurm state on the node(s).
 
 Arguments:
   HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2).
 
-  --all                  Use all hosts that are listed in slurm
+  --all,-a               Use all hosts that are listed in slurm.
 
-  --drain                Use hosts that are in a 'drain' state in slurm
+  --drain                Use hosts that are in a 'drain' state in slurm.
 
-  --down                 Use hosts that are in a 'down' state in slurm
+  --down                 Use hosts that are in a 'down' state in slurm.
 
-  --idle                 Use hosts that are in a 'idle' state in slurm
+  --idle                 Use hosts that are in a 'idle' state in slurm.
 
-  --partition,-p         Use all nodes in a specified slurm partition name (i.e. compute)
+  --partition,-p <name>  Use all nodes in a specified slurm partition name (i.e. compute).
 
   * indicates function is a work in progress
 
@@ -49,7 +49,7 @@ Notes:
 
   - nodenurse.sh automatically deduplicates your provided hostlist.
 
-  - tagunhealthy.py must be present in same directory as nodenurse.sh for tagging to work
+  - tagunhealthy.py must be present in same directory as nodenurse.sh for tagging to work.
 "
 
 HELP_BRIEF="usage: $0 [-c, --healthcheck] [-l, --latest] [-r, --reboot]
@@ -177,7 +177,7 @@ else
 fi # End Host/hostfile input
 
 # deduplicate nodelist
-nodes=$(echo $nodes | tr " " "\n" | sort -u | tr "\n" " ")
+nodes=$(echo $nodes | tr " " "\n" | sort -u )
 
 # Initialize colors
 RED='\033[0;31m'
@@ -297,20 +297,14 @@ display_nodes(){
       state=`generate_slurm_state $n`
       
       # Node error checking
-      if [[ $state =~ "mix" ]] || [[ $state =~ "alloc" ]]; then
-        allocstate=true
-      fi
+      case $state in
+	mix|alloc) allocstate=true;;
+        drain|down) goodstate=false;;
+	"Not Found") goodslurm=false;;
+      esac
 
       if [[ $inst == "Not Found" ]]; then
 	goodinst=false
-      fi
-
-      if [[ $state == "Not Found" ]]; then
-	goodslurm=false
-      fi
-
-      if [[ $state == "drain" ]] || [[ $state == "down" ]]; then
-	goodstate=false
       fi
 
       # output node data
@@ -324,7 +318,7 @@ display_nodes(){
         fi
 
 	printf "%-10s %-25s %-15s %-10s\n" "$n" "$inst" "$serial" "$state"
-        echo -e "\u27A1 OCID: $ocid"
+        echo -e "  \u27A1 $ocid"
         echo " "
 
       else
@@ -343,7 +337,10 @@ display_nodes(){
     if [ -n "$(sinfo -R -h)" ] && [ $goodstate == "false" ];then
       echo -e "More detail on down/drain nodes:\n"
       sinfo -R -o "%10n %6t %E" | head -1
-      sinfo -R -o "%10n %6t %E" | grep --color=always -E "$(echo $nodes | tr " " "|")"
+      for i in $nodes
+      do
+	sinfo -R -o "%10n %6t %E" | grep --color=always "$i "
+      done
       echo ""
     fi
 
@@ -621,7 +618,60 @@ fi
 # Main function for full nccl test on nodes
 if [[ $ntype == nccl ]]; then
 
-    exit 0
+    display_nodes 
+
+    if [ $numnodes = 1 ]; then
+      echo -e "\nMust have at least 2 nodes!"
+      exit 1
+    fi
+
+    # get all the node's shapes this also tests ssh
+    echo -e "Testing ssh to nodes... \n"
+    shapes=`echo $nodes | tr " " "\n" | xargs -I {} -P 0 ssh -o "ConnectTimeout=5" {} "curl -sH \"Authorization: Bearer Oracle\" -L http://169.254.169.254/opc/v2/instance/ | jq -r .shape"`
+
+    if [ $? -gt 0 ]; then
+      echo -e "${RED}ERROR:${NC} There is node(s) that are inaccessable via ssh.\n"
+      exit 1
+    fi
+
+    finalshape=`echo $shapes | tr " " "\n" | sort -u`
+
+    if [ $(echo $finalshape | wc -l) -gt 1 ]; then
+	echo -e "${RED}ERROR:${NC} There are multiple types of shapes in this hostlist\n"
+	exit 1
+    fi
+
+    case $finalshape in
+    BM.GPU.B4.8|BM.GPU.A100-v2.8) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce.sh";;
+    BM.GPU.H100.8|BM.GPU.H200.8) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sh";;
+    *) echo -e "${RED}ERROR:${NC} Unsupported shape found. --nccl only supports A100, H100 and H200"; exit 1 ;;
+    esac
+
+    echo -e "How many times to run the NCCL test?"
+    read numtimes
+      if [[ $numtimes =~ ^[1-9][0-9]*$ ]]; then
+
+        # mv nodeorderingbyrack.py if needed
+        if [ -f "/home/ubuntu/node_ordering_by_rack.py" ]; then
+          true
+        else
+          cp /opt/oci-hpc/bin/node_ordering_by_rack.py /home/ubuntu/node_ordering_by_rack.py
+        fi
+    
+        for i in $nodes
+        do
+          echo $i >> $date-hostfile.tmp
+        done
+    
+        $script $numtimes $date-hostfile.tmp
+        rm $date-hostfile.tmp
+        mv nccl_run_allreduce.sh.log logs/
+	echo ""
+    
+    else
+      echo -e "${RED}ERROR:${NC}Invalid input. Please enter a positive integer.\n"
+      exit 1
+    fi
 
 fi
 
@@ -651,37 +701,43 @@ if [[ $ntype == update ]]; then
          for i in $nodes
          do
            s=`generate_slurm_state $i`
-           if [[ "$s" =~ "idle|mix|alloc" ]]; then
-             sudo scontrol update nodename="$i" state=resume
-           fi
+	   case $s in
+	     idle|mix|alloc|maint) ;;
+	     *) sudo scontrol update nodename="$i" state=resume;;
+           esac
          done
 	 echo ""
          sleep 1
          display_nodes
          exit 0
-         ;;
+      ;;
       2)
          echo "Enter a reason:"
          read reason
-         sudo scontrol update nodename="$nodes" state=drain reason="$reason"
-         if [ $? -ne 0 ]; then
-           echo -e "\nExiting..."
-           exit 1
-         fi
+         for i in $nodes
+         do
+           s=`generate_slurm_state $i`
+	   case $s in
+	     mix|alloc) ;;
+	     *) sudo scontrol update nodename="$nodes" state=drain reason="$reason";;
+           esac
+         done
 	 echo ""
          sleep 1
          display_nodes
          exit 0
-         ;;
-
+      ;;
       3) 
          echo "Enter a reason:"
          read reason
-         sudo scontrol update nodename="$nodes" state=down reason="$reason"
-         if [ $? -ne 0 ]; then
-           echo -e "\nExiting..."
-           exit 1
-         fi
+         for i in $nodes
+	 do
+           s=`generate_slurm_state $i`
+	   case $s in
+	     mix|alloc) ;;
+	     *) sudo scontrol update nodename="$nodes" state=down reason="$reason";;
+           esac
+         done
 	 echo ""
          sleep 1
          display_nodes
