@@ -179,7 +179,7 @@ else
 fi # End Host/hostfile input
 
 # deduplicate nodelist
-nodes=$(echo $nodes | tr " " "\n" | sort -u )
+nodes=$(echo $nodes | tr " " "\n" | sort -u | tr "\n" " " )
 
 # Initialize colors
 RED='\033[0;31m'
