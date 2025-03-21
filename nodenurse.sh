@@ -239,6 +239,12 @@ generate_slurm_state() {
     fi
 }
 
+# Function takes in a hostname (e.g. gpu-123) and returns it's shape
+generate_shape() {
+  outputshape=`ssh $1 -o "ConnectTimeout=5" "curl -sH \"Authorization: Bearer Oracle\" -L http://169.254.169.254/opc/v2/instance/ | jq -r .shape"`
+  echo $outputshape
+}
+
 # Function takes in a hostname (e.g. gpu-123) and returns it's serial number
 generate_serial() {
     outputserial=`ssh -o "ConnectTimeout=5" $1 "sudo dmidecode -s system-serial-number" || echo -e "Error: SSH"`
@@ -272,25 +278,27 @@ nccl_scout() {
 # Function to check shape of nodes and exit if unsupported
 check_shape() {
 
-    # get all the node's shapes this also tests ssh
     echo -e "Getting shapes and testing ssh to nodes... \n"
-    shapes=`echo $nodes | tr " " "\n" | xargs -I {} -P 0 ssh -o "ConnectTimeout=5" {} "curl -sH \"Authorization: Bearer Oracle\" -L http://169.254.169.254/opc/v2/instance/ | jq -r .shape"`
+
+    shapes=$(pdsh -N -S -R ssh -t 5 -w "$nodes" "curl -sH \"Authorization: Bearer Oracle\" -L http://169.254.169.254/opc/v2/instance/ | jq -r .shape")
 
     if [ $? -gt 0 ]; then
       echo -e "${RED}ERROR:${NC} There are node(s) that are inaccessable via ssh.\n"
       exit 1
     fi
 
-    finalshape=`echo $shapes | tr " " "\n" | sort -u`
+    # Deduplicate list of shapes
+    shapes=`echo $shapes | tr " " "\n" | sort -u | tr "\n" " "`
 
-    if [ $(echo $finalshape | wc -l) -gt 1 ]; then
+    if [ $(echo $shapes | wc -w) -gt 1 ]; then
 	echo -e "${RED}ERROR:${NC} There are multiple types of shapes in this hostlist\n"
 	exit 1
     fi
 
-    case $finalshape in
-    BM.GPU.B4.8|BM.GPU.A100-v2.8) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce.sh";;
-    BM.GPU.H100.8|BM.GPU.H200.8) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sh";;
+    # Check node shape and set the right sbatch script
+    case $shapes in
+    BM.GPU.B4.8|BM.GPU.A100-v2.8) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce.sbatch";;
+    BM.GPU.H100.8|BM.GPU.H200.8) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sbatch";;
     *) echo -e "${RED}ERROR:${NC} Unsupported shape found. nccl testing only supports A100, H100 and H200"; exit 1 ;;
     esac
 
@@ -304,7 +312,7 @@ display_nodes(){
     echo "----------------------------------------------------------------"
     echo " " 
     if [[ $1 == "full" ]]; then
-      printf "%-10s %-25s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial #" "Slurm State"
+      printf "%-10s %-25s %-15s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial #" "Shape" "Slurm State"
       echo " " 
     else
       printf "%-10s %-25s %-10s\n" "Hostname" "Instance Name" "Slurm State"
@@ -341,12 +349,13 @@ display_nodes(){
 
         serial=`generate_serial $n`
 	ocid=`generate_ocid $inst`
+	shape=`generate_shape $n`
 
         if [[ $serial == "Error: SSH" ]]; then
           goodssh=false
         fi
 
-	printf "%-10s %-25s %-15s %-10s\n" "$n" "$inst" "$serial" "$state"
+	printf "%-10s %-25s %-15s %-15s %-10s\n" "$n" "$inst" "$serial" "$shape" "$state"
         echo -e "  \u21B3 $ocid"
         echo " "
 
@@ -660,17 +669,17 @@ if [[ $ntype == nccl ]]; then
         if [ -f "/home/ubuntu/node_ordering_by_rack.py" ]; then
           true
         else
-          cp /opt/oci-hpc/bin/node_ordering_by_rack.py /home/ubuntu/node_ordering_by_rack.py
+          sudo cp /opt/oci-hpc/bin/node_ordering_by_rack.py /home/ubuntu/
         fi
-    
-        for i in $nodes
-        do
-          echo $i >> $date-hostfile.tmp
-        done
-    
-        $script $numtimes $date-hostfile.tmp
-        rm $date-hostfile.tmp
-        mv nccl_run_allreduce.sh.log logs/
+
+        for i in $(seq 1 $numtimes)
+	do
+	  sbatch -w "$nodes" $script
+	done
+	if [ -f "nccl_run_allreduce.sh.log" ]; then
+          mv nccl_run_allreduce.sh.log logs/
+	fi
+
 	echo ""
     
     else
