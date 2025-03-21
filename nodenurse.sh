@@ -14,7 +14,7 @@ Options:
   -t, --tagunhealthy     Apply the unhealthy tag to the node(s)
   -r, --reboot           Hard reboot the node(s).
   -i, --identify         Display full details of the node(s) and exit.
-* -n, --nccl             Run allreduce nccl test on the node(s).
+  -n, --nccl             Run allreduce nccl test on the node(s).
   -s, --ncclscout        Run ncclscout (nccl pair test) on the node(s).
   -u, --update           Update the slurm state on the node(s).
 
@@ -23,15 +23,16 @@ Arguments:
 
   --all,-a               Use all hosts that are listed in slurm.
 
+  --idle                 Use hosts that are in a 'idle' state in slurm.
+
   --drain                Use hosts that are in a 'drain' state in slurm.
 
   --down                 Use hosts that are in a 'down' state in slurm.
 
-  --idle                 Use hosts that are in a 'idle' state in slurm.
+  --alldown              Use hosts that are in a 'down' or 'drain' state in slurm.
 
   --partition,-p <name>  Use all nodes in a specified slurm partition name (i.e. compute).
 
-  * indicates function is a work in progress
 
 Examples:
   $0 -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
@@ -47,7 +48,7 @@ Notes:
   - In order for tagging hosts as unhealthy to work properly, your tenancy must be properly
   whitelisted for unhealthy instance tagging and have the correct tag namespace and tags set up.
 
-  - nodenurse.sh automatically deduplicates your provided hostlist.
+  - nodenurse.sh deduplicates your provided hostlist.
 
   - tagunhealthy.py must be present in same directory as nodenurse.sh for tagging to work.
 "
@@ -55,7 +56,8 @@ Notes:
 HELP_BRIEF="usage: $0 [-c, --healthcheck] [-l, --latest] [-r, --reboot]
                       [-i, --identify] [-t, --tagunhealthy] [-n, --nccl]
 		      [-s, --ncclscout] [-u, --update] [-h, --help]
-                      [Arguments {HOST(S),--all,--idle,--drain,--down}]"
+                      [Arguments {HOST(S),HOSTFILE,--all,--idle,--drain,--down,
+	                          --alldown,--partition <name>}]"
 
 # Check if an argument is passed
 if [ -z "$1" ]; then
@@ -267,11 +269,38 @@ nccl_scout() {
 
 }
 
+# Function to check shape of nodes and exit if unsupported
+check_shape() {
+
+    # get all the node's shapes this also tests ssh
+    echo -e "Getting shapes and testing ssh to nodes... \n"
+    shapes=`echo $nodes | tr " " "\n" | xargs -I {} -P 0 ssh -o "ConnectTimeout=5" {} "curl -sH \"Authorization: Bearer Oracle\" -L http://169.254.169.254/opc/v2/instance/ | jq -r .shape"`
+
+    if [ $? -gt 0 ]; then
+      echo -e "${RED}ERROR:${NC} There are node(s) that are inaccessable via ssh.\n"
+      exit 1
+    fi
+
+    finalshape=`echo $shapes | tr " " "\n" | sort -u`
+
+    if [ $(echo $finalshape | wc -l) -gt 1 ]; then
+	echo -e "${RED}ERROR:${NC} There are multiple types of shapes in this hostlist\n"
+	exit 1
+    fi
+
+    case $finalshape in
+    BM.GPU.B4.8|BM.GPU.A100-v2.8) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce.sh";;
+    BM.GPU.H100.8|BM.GPU.H200.8) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sh";;
+    *) echo -e "${RED}ERROR:${NC} Unsupported shape found. nccl testing only supports A100, H100 and H200"; exit 1 ;;
+    esac
+
+}
+
 # Function displays the list of hosts along with relevant information, checking for nodes that can't be ssh'd or are in an allocated state in slurm
 display_nodes(){
 
     echo "----------------------------------------------------------------"
-    echo "----------------------" $start_timestamp "---------------------"
+    echo "---------------------- `date -u +'%F %T'` ---------------------"
     echo "----------------------------------------------------------------"
     echo " " 
     if [[ $1 == "full" ]]; then
@@ -299,7 +328,7 @@ display_nodes(){
       # Node error checking
       case $state in
 	mix|alloc) allocstate=true;;
-        drain|down) goodstate=false;;
+        drain|down|drng) goodstate=false;;
 	"Not Found") goodslurm=false;;
       esac
 
@@ -318,7 +347,7 @@ display_nodes(){
         fi
 
 	printf "%-10s %-25s %-15s %-10s\n" "$n" "$inst" "$serial" "$state"
-        echo -e "  \u27A1 $ocid"
+        echo -e "  \u21B3 $ocid"
         echo " "
 
       else
@@ -455,6 +484,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
         yes|Yes|YES|y|Y)
           echo "Proceeding..."
           echo " "
+	  check_shape
 	  nccl_scout
        ;;
         no|No|NO|n|N)
@@ -620,32 +650,7 @@ if [[ $ntype == nccl ]]; then
 
     display_nodes 
 
-    if [ $numnodes = 1 ]; then
-      echo -e "\nMust have at least 2 nodes!"
-      exit 1
-    fi
-
-    # get all the node's shapes this also tests ssh
-    echo -e "Testing ssh to nodes... \n"
-    shapes=`echo $nodes | tr " " "\n" | xargs -I {} -P 0 ssh -o "ConnectTimeout=5" {} "curl -sH \"Authorization: Bearer Oracle\" -L http://169.254.169.254/opc/v2/instance/ | jq -r .shape"`
-
-    if [ $? -gt 0 ]; then
-      echo -e "${RED}ERROR:${NC} There is node(s) that are inaccessable via ssh.\n"
-      exit 1
-    fi
-
-    finalshape=`echo $shapes | tr " " "\n" | sort -u`
-
-    if [ $(echo $finalshape | wc -l) -gt 1 ]; then
-	echo -e "${RED}ERROR:${NC} There are multiple types of shapes in this hostlist\n"
-	exit 1
-    fi
-
-    case $finalshape in
-    BM.GPU.B4.8|BM.GPU.A100-v2.8) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce.sh";;
-    BM.GPU.H100.8|BM.GPU.H200.8) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sh";;
-    *) echo -e "${RED}ERROR:${NC} Unsupported shape found. --nccl only supports A100, H100 and H200"; exit 1 ;;
-    esac
+    check_shape
 
     echo -e "How many times to run the NCCL test?"
     read numtimes
@@ -679,6 +684,7 @@ fi
 if [[ $ntype == ncclscout ]]; then
 
     display_nodes
+    check_shape
     nccl_scout
 
 fi
@@ -688,12 +694,14 @@ if [[ $ntype == update ]]; then
 
     display_nodes
 
-    echo -e "Select option:
+    echo -e "Select option to apply:
 1. Set node(s) to 'resume'
 2. Set node(s) to 'drain'
 3. Set node(s) to 'down'
 4. Create a 2 hour maintenance reservation on node(s)
 5. Quit
+
+${YELLOW}Reminder${NC}: Nodenurse won't put nodes that are in an allocated state into drain/down.
   "
     read response
     case $response in
@@ -702,15 +710,12 @@ if [[ $ntype == update ]]; then
          do
            s=`generate_slurm_state $i`
 	   case $s in
-	     idle|mix|alloc|maint) ;;
+	     idle|mix|alloc|maint|drng) ;;
 	     *) sudo scontrol update nodename="$i" state=resume;;
            esac
          done
-	 echo ""
-         sleep 1
-         display_nodes
-         exit 0
       ;;
+
       2)
          echo "Enter a reason:"
          read reason
@@ -718,15 +723,12 @@ if [[ $ntype == update ]]; then
          do
            s=`generate_slurm_state $i`
 	   case $s in
-	     mix|alloc) ;;
+	     drain|down|drng) ;;
 	     *) sudo scontrol update nodename="$nodes" state=drain reason="$reason";;
            esac
          done
-	 echo ""
-         sleep 1
-         display_nodes
-         exit 0
       ;;
+
       3) 
          echo "Enter a reason:"
          read reason
@@ -734,20 +736,16 @@ if [[ $ntype == update ]]; then
 	 do
            s=`generate_slurm_state $i`
 	   case $s in
-	     mix|alloc) ;;
+	     mix|alloc|drng|drain) echo -e "\n${RED}$i${NC} has a job running on it.\n\nRun the following command manually to place node into a down state, this may interrupt running jobs!\n\n    sudo scontrol update nodename=$i state=down reason=\"$reason\"" ;;
 	     *) sudo scontrol update nodename="$nodes" state=down reason="$reason";;
            esac
          done
-	 echo ""
-         sleep 1
-         display_nodes
-         exit 0
          ;;
 
       4) 
          sudo scontrol create reservation starttime=`date -u +'%FT%T'` flags=maint,ignore_jobs user=$USER duration=120 nodes="$nodes" && sleep 1 
          if [ $? -ne 0 ]; then
-           echo -e "\nExiting..."
+           echo -e "\n${RED}ERROR:${NC}Couldn't create slurm reservation.\nExiting..."
            exit 1
          fi
 	 
@@ -790,6 +788,11 @@ Current Reservations:"
       *) echo -e "Invalid Input\n"; exit 1 ;;
 
     esac  
+   
+    echo -e "\n"
+    sleep 2
+    display_nodes
+    exit 0
 
 fi
 
