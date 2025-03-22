@@ -295,8 +295,10 @@ check_shape() {
 	exit 1
     fi
 
+    shapes="BM.GPU.B4.8"
+
     # Check node shape and set the right sbatch script
-    case $shapes in
+    case "$shapes" in
     BM.GPU.B4.8|BM.GPU.A100-v2.8) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce.sbatch";;
     BM.GPU.H100.8|BM.GPU.H200.8) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sbatch";;
     *) echo -e "${RED}ERROR:${NC} Unsupported shape found. nccl testing only supports A100, H100 and H200"; exit 1 ;;
@@ -672,13 +674,25 @@ if [[ $ntype == nccl ]]; then
           sudo cp /opt/oci-hpc/bin/node_ordering_by_rack.py /home/ubuntu/
         fi
 
+	if [ ! -d "nccl_tests/" ]; then
+	  mkdir nccl_tests/
+	fi
+
+	searchdate=$(date +"%Y-%m-%dT%H%M")
         for i in $(seq 1 $numtimes)
 	do
-	  sbatch -w "$nodes" $script
+	  sbatch -N $numnodes -w "$nodes" \
+		  --job-name=nodenurse_nccl \
+		  --output=nccl_tests/nccl_job-%j.out \
+		  --error=nccl_tests/nccl_job-%j.err \
+		  $script \
+		  | tee -a tmp_jobid
+
 	done
-	if [ -f "nccl_run_allreduce.sh.log" ]; then
-          mv nccl_run_allreduce.sh.log logs/
-	fi
+        
+	jobids=`sacct -P -n -o "JobID, JobName, submit" | grep "nodenurse" | grep "$searchdate" | awk -F '|' '{print $1}' | tr "|" " "`
+	
+        echo $jobids
 
 	echo ""
     

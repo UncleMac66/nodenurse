@@ -1,2 +1,4 @@
 *.log
 logs/*
+tmp_*
+nccl_tests/*
