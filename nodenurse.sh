@@ -665,37 +665,52 @@ if [[ $ntype == nccl ]]; then
 
     echo -e "How many times to run the NCCL test?"
     read numtimes
-      if [[ $numtimes =~ ^[1-9][0-9]*$ ]]; then
+    if [[ $numtimes =~ ^[1-9][0-9]*$ ]]; then
 
-        # mv nodeorderingbyrack.py if needed
-        if [ -f "/home/ubuntu/node_ordering_by_rack.py" ]; then
-          true
-        else
-          sudo cp /opt/oci-hpc/bin/node_ordering_by_rack.py /home/ubuntu/
-        fi
+      # mv nodeorderingbyrack.py if needed
+      if [ ! -f "/home/ubuntu/node_ordering_by_rack.py" ]; then
+        sudo cp /opt/oci-hpc/bin/node_ordering_by_rack.py /home/ubuntu/
+      fi
 
-	if [ ! -d "nccl_tests/" ]; then
-	  mkdir nccl_tests/
-	fi
+      if [ ! -d "nccl_tests/" ]; then
+	mkdir nccl_tests/
+      fi
 
-	searchdate=$(date +"%Y-%m-%dT%H%M")
-        for i in $(seq 1 $numtimes)
-	do
-	  sbatch -N $numnodes -w "$nodes" \
-		  --job-name=nodenurse_nccl \
-		  --output=nccl_tests/nccl_job-%j.out \
-		  --error=nccl_tests/nccl_job-%j.err \
-		  $script \
-		  | tee -a tmp_jobid
-
-	done
-        
-	jobids=`sacct -P -n -o "JobID, JobName, submit" | grep "nodenurse" | grep "$searchdate" | awk -F '|' '{print $1}' | tr "|" " "`
+      searchdate=$(date +"%Y-%m-%dT%H%M")
+      for i in $(seq 1 $numtimes)
+      do
+	sbatch -N $numnodes -w "$nodes" \
+	  --job-name=nodenurse_nccl \
+	  --output=nccl_tests/nccl_job-%j.out \
+	  --error=nccl_tests/nccl_job-%j.err \
+	  $script \
+	  | tee -a tmp_jobid
+      done
 	
-        echo $jobids
-
-	echo ""
+      jobids=`cat tmp_jobid| awk '{print $4}'`
+      rm tmp_jobid
+      echo ""
     
+      sleep 1
+      printf "%-10s %-25s %-10s\n" "JobID" "Name" "Current State"
+      for j in $jobids
+      do
+        jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
+        printf "%-10s %-25s %-10s\n" "$j" "nodenurse_nccl" "$jobstate"
+      done
+      echo -e "\nUse 'squeue' to check on above nccl jobs\n"
+
+      echo -e "Job outputs stored at:\n"
+      for i in $jobids
+      do
+        echo "nccl_jobs/nccl_job-$i.out"
+      done
+
+      # clean up nccl script output
+      find "." -maxdepth 1 -type d -regex '^.*[0-9].*' -print0 | while IFS= read -r -d '' dir; do
+        mv "$dir" "nccl_tests/"
+      done
+	
     else
       echo -e "${RED}ERROR:${NC}Invalid input. Please enter a positive integer.\n"
       exit 1
