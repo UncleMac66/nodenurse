@@ -1,12 +1,11 @@
 #!/bin/bash
 
 HELP_MESSAGE="
-Usage: $0 [OPTION] [HOST(S)]
+Usage: $0 [OPTION] [ARGUMENT]
 
 Description:
-  nodenurse.sh takes the nodes that are in a down/drain state in slurm, supplied nodename(s), or a hostfile and 
-  can run a fresh healthcheck on them, grab the latest healthcheck, send them through ncclscout.py, or can be used 
-  to initiate a hard reboot of those nodes.
+  nodenurse.sh takes supplied nodename(s), or a list of nodenames in a hostfile and can run a variety of functions
+  on them which can be helpful when troubleshooting an OCI-HPC Slurm based cluster.
 
 Options:
   -h, --help             Display this message and exit.
@@ -14,14 +13,26 @@ Options:
   -l, --latest           Gather the latest healthcheck from the node(s).
   -t, --tagunhealthy     Apply the unhealthy tag to the node(s)
   -r, --reboot           Hard reboot the node(s).
-  -i, --identify         Display detail of the node(s) and exit.
+  -i, --identify         Display full details of the node(s) and exit.
+  -n, --nccl             Run allreduce nccl test on the node(s).
+  -s, --ncclscout        Run ncclscout (nccl pair test) on the node(s).
+  -u, --update           Update the slurm state on the node(s).
 
 Arguments:
   HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2).
-                         This is optional. If no hosts are provided nodenurse will pull in nodes
-                         that are in a down or drain state in slurm by default.
 
-  -a, --all              Use all hosts that are listed in slurm, not just ones in down/drain state.
+  --all,-a               Use all hosts that are listed in slurm.
+
+  --idle                 Use hosts that are in a 'idle' state in slurm.
+
+  --drain                Use hosts that are in a 'drain' state in slurm.
+
+  --down                 Use hosts that are in a 'down' state in slurm.
+
+  --alldown              Use hosts that are in a 'down' or 'drain' state in slurm.
+
+  --partition,-p <name>  Use all nodes in a specified slurm partition name (i.e. compute).
+
 
 Examples:
   $0 -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
@@ -30,21 +41,23 @@ Examples:
   $0 --identify gpu-1 gpu-2   display details about 'gpu-1' and 'gpu-2' then quit.
 
 Notes:
-  - nodenurse.sh gets the compartment OCID from /opt/oci-hpc/conf/queues.conf.
+  - nodenurse.sh gets compartment OCID from /opt/oci-hpc/conf/queues.conf.
   If you use queues across compartments please double check this value and consider 
   hard-coding it to your use case.
 
   - In order for tagging hosts as unhealthy to work properly, your tenancy must be properly
   whitelisted for unhealthy instance tagging and have the correct tag namespace and tags set up.
 
-  - nodenurse.sh automatically deduplicates your provided hostlist.
+  - nodenurse.sh deduplicates your provided hostlist.
 
-  - tagunhealthy.py must be present in same directory as nodenurse.sh for tagging to work
+  - tagunhealthy.py must be present in same directory as nodenurse.sh for tagging to work.
 "
 
-HELP_BRIEF="usage: $0 [-c healthcheck] [-l latest] [-r reboot]
-                      [-i identify] [-t tagunhealthy] [-h help]
-                      [OPTION {HOST(S)}]"
+HELP_BRIEF="usage: $0 [-c, --healthcheck] [-l, --latest] [-r, --reboot]
+                      [-i, --identify] [-t, --tagunhealthy] [-n, --nccl]
+		      [-s, --ncclscout] [-u, --update] [-h, --help]
+                      [Arguments {HOST(S),HOSTFILE,--all,--idle,--drain,--down,
+	                          --alldown,--partition <name>}]"
 
 # Check if an argument is passed
 if [ -z "$1" ]; then
@@ -73,6 +86,18 @@ elif [[ $1 == "-t" ]] || [[ $1 == "--tagunhealthy" ]]; then
     ntype=tag
     echo -e "\nTagging Mode..."
 
+elif [[ $1 == "-n" ]] || [[ $1 == "--nccl" ]]; then
+    ntype=nccl
+    echo -e "\nFull NCCL Mode..."
+
+elif [[ $1 == "-s" ]] || [[ $1 == "--ncclscout" ]]; then
+    ntype=ncclscout
+    echo -e "\nncclscout Mode..."
+
+elif [[ $1 == "-u" ]] || [[ $1 == "--update" ]]; then
+    ntype=update
+    echo -e "\nUpdate Mode..."
+
 elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]]; then
     echo "$HELP_MESSAGE"
     exit 0
@@ -97,15 +122,51 @@ if [ -f "$2" ]; then
 
 elif [ -z "$2" ]; then
 
-    # no argument provided so pull from sinfo
-    echo -e "\nNo hostfile provided. Grabbing down/drain hosts from slurm...\n"
-    nodes=$(sinfo -N | grep -E "down|drain" | awk '{print $1}' | sort -u | tr '\n' ' ')
+    # no argument provided so ask for a slurm status
+    echo -e "\nNo hosts provided.\n\nPlease provide hosts manually, or specify a slurm status (i.e. --idle, --down, --drain, --all)\n"
 
 elif [ $2 == "-a" ] || [ $2 == "--all" ]; then
 
     # all flag is passed so grab all nodes from sinfo
     echo -e "\nGrabbing all hosts from slurm...\n"
-    nodes=$(sinfo -N -h -o %n | sort -u | tr '\n' ' ')
+    nodes=$(sinfo -h -o %n | sort -u | tr '\n' ' ')
+
+elif [ $2 == "-p" ] || [ $2 == "--partition" ]; then
+
+    # partition flag is passed so grab all nodes from specified partition
+    echo -e "\nGrabbing all hosts from $3 partition...\n"
+    nodes=$(sinfo -p "$3" -h -o %n | sort -u | tr '\n' ' ')
+
+elif [ $2 == "--down" ]; then
+
+    # down flag is passed so grab all nodes from sinfo
+    echo -e "\nGrabbing hosts from slurm marked as 'down'...\n"
+    nodes=$(sinfo -N | grep "down" | awk '{print $1}' | sort -u | tr '\n' ' ')
+
+elif [ $2 == "--drain" ]; then
+
+    # drain flag is passed so grab all nodes from sinfo
+    echo -e "\nGrabbing hosts from slurm marked as 'drain'...\n"
+    nodes=$(sinfo -N | grep "drain" | awk '{print $1}' | sort -u | tr '\n' ' ')
+
+elif [ $2 == "--alldown" ] || [ $2 == "-dd" ]; then
+
+    # down/drain flag is passed so grab all nodes from sinfo
+    echo -e "\nGrabbing hosts from slurm marked as 'down' and 'drain'...\n"
+    nodes=$(sinfo -N | grep -E "drain|down" | awk '{print $1}' | sort -u | tr '\n' ' ')
+
+elif [ $2 == "--idle" ]; then
+
+    # all flag is passed so grab all nodes from sinfo
+    echo -e "\nGrabbing hosts from slurm marked as 'idle'...\n"
+    nodes=$(sinfo -N | grep "idle" | awk '{print $1}' | sort -u | tr '\n' ' ')
+
+elif [ "${2:0:1}" == "-" ]; then
+
+    # arg is a mistyped flag so quit
+    echo -e "\nUnknown argument '$2'"
+    echo -e "\nPlease provide hosts manually, or specify a slurm status (i.e. --idle, --down, --drain, --all)"
+    exit 1
 
 else
 
@@ -118,7 +179,7 @@ else
 fi # End Host/hostfile input
 
 # deduplicate nodelist
-nodes=$(echo $nodes | tr " " "\n" | sort -u | tr "\n" " ")
+nodes=$(echo $nodes | tr " " "\n" | sort -u | tr "\n" " " )
 
 # Initialize colors
 RED='\033[0;31m'
@@ -150,6 +211,7 @@ goodhealth=true
 goodssh=true
 goodinst=true
 goodslurm=true
+goodstate=true
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's instance name in the OCI console
 generate_instance_name() {
@@ -177,23 +239,90 @@ generate_slurm_state() {
     fi
 }
 
+# Function takes in a hostname (e.g. gpu-123) and returns it's shape
+generate_shape() {
+  outputshape=`ssh $1 -o "ConnectTimeout=5" "curl -sH \"Authorization: Bearer Oracle\" -L http://169.254.169.254/opc/v2/instance/ | jq -r .shape"`
+  echo $outputshape
+}
+
 # Function takes in a hostname (e.g. gpu-123) and returns it's serial number
 generate_serial() {
-    outputserial=`ssh $1 "sudo dmidecode -s system-serial-number" || echo -e "Error: SSH"`
+    outputserial=`ssh -o "ConnectTimeout=5" $1 "sudo dmidecode -s system-serial-number" || echo -e "Error: SSH"`
     echo $outputserial
 }
 
+# Function to send nodes through ncclscout
+nccl_scout() {
+
+    if [ $numnodes = 1 ]; then
+      echo -e "\nMust have at least 2 nodes!"
+      exit 1
+    fi
+    if [ $(($numnodes % 2)) -ne 0 ]; then
+      nodes+=" ${nodes%% *}"
+    fi
+
+    for i in $nodes
+    do
+      echo $i >> $date-hostfile.tmp
+    done
+
+    python3 ncclscout.py $date-hostfile.tmp
+    rm $date-hostfile.tmp
+    mv nccl_test.log $LOGS_FOLDER
+    mv nccl_run_allreduce.sh.log $LOGS_FOLDER
+    echo ""
+
+}
+
+# Function to check shape of nodes and exit if unsupported
+check_shape() {
+
+    echo -e "Getting shapes and testing ssh to nodes... \n"
+
+    shapes=$(pdsh -N -S -R ssh -t 5 -w "$nodes" "curl -sH \"Authorization: Bearer Oracle\" -L http://169.254.169.254/opc/v2/instance/ | jq -r .shape")
+
+    if [ $? -gt 0 ]; then
+      echo -e "${RED}ERROR:${NC} There are node(s) that are inaccessable via ssh.\n"
+      exit 1
+    fi
+
+    # Deduplicate list of shapes
+    shapes=`echo $shapes | tr " " "\n" | sort -u | tr "\n" " "`
+
+    if [ $(echo $shapes | wc -w) -gt 1 ]; then
+	echo -e "${RED}ERROR:${NC} There are multiple types of shapes in this hostlist\n"
+	exit 1
+    fi
+
+    shapes=$(echo $shapes | awk -F '.' '{print $3}')
+
+    # Check node shape and set the right sbatch script
+    case "$shapes" in
+    B4|A100) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce.sbatch";;
+    H100|H200) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sbatch";;
+    *) echo -e "${RED}ERROR:${NC} Unsupported shape found. nccl testing only supports A100, H100 and H200"; exit 1 ;;
+    esac
+
+}
+
 # Function displays the list of hosts along with relevant information, checking for nodes that can't be ssh'd or are in an allocated state in slurm
-display_nodes() {
+display_nodes(){
 
     echo "----------------------------------------------------------------"
-    echo "----------------------" $start_timestamp "---------------------"
+    echo "---------------------- `date -u +'%F %T'` ---------------------"
     echo "----------------------------------------------------------------"
     echo " " 
-    printf "%-10s %-25s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial #" "Slurm State"
-    echo " " 
+    if [[ $1 == "full" ]]; then
+      printf "%-10s %-25s %-15s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial" "Shape" "Slurm State"
+      echo " " 
+    else
+      printf "%-10s %-25s %-10s\n" "Hostname" "Instance Name" "Slurm State"
+      echo " " 
+    fi
+
     if [ `echo $nodes | wc -w` -eq 0 ];then
-      echo -e "${YELLOW}Warning:${NC} No hosts to list. There are no hosts that are showing as down/drain in sinfo.\n"
+      echo -e "${YELLOW}Warning:${NC} No hosts to list.\n"
       echo "exiting..."
       exit 0
     fi
@@ -205,32 +334,55 @@ display_nodes() {
       # Gather details
       inst=`generate_instance_name $n`
       state=`generate_slurm_state $n`
-      serial=`generate_serial $n`
       
       # Node error checking
-      if [[ $state =~ "mix" ]] || [[ $state =~ "alloc" ]]; then
-        allocstate=true
-      fi
-
-      if [[ $serial == "Error: SSH" ]]; then
-	goodssh=false
-      fi
+      case $state in
+	mix|alloc) allocstate=true;;
+        drain|down|drng) goodstate=false;;
+	"Not Found") goodslurm=false;;
+      esac
 
       if [[ $inst == "Not Found" ]]; then
 	goodinst=false
       fi
 
-      if [[ $state == "Not Found" ]]; then
-	goodslurm=false
+      # output node data
+      if [[ $1 == "full" ]]; then
+
+        serial=`generate_serial $n`
+	ocid=`generate_ocid $inst`
+	shape=`generate_shape $n`
+
+        if [[ $serial == "Error: SSH" ]]; then
+          goodssh=false
+        fi
+
+	printf "%-10s %-25s %-15s %-15s %-10s\n" "$n" "$inst" "$serial" "$shape" "$state"
+        echo -e "  \u21B3 $ocid"
+        echo " "
+
+      else
+
+        printf "%-10s %-25s %-10s\n" "$n" "$inst" "$state"
+        echo " "
+
       fi
 
-      # output node data
-      printf "%-10s %-25s %-15s %-10s\n" "$n" "$inst" "$serial" "$state"
-      echo " "
     done
 
     # Display total num of nodes
-    echo -e "Total: $numnodes Host(s)\n"
+    echo -e "Total: $numnodes Distinct host(s)\n"
+
+    # If down/drain nodes then display reasons
+    if [ -n "$(sinfo -R -h)" ] && [ $goodstate == "false" ];then
+      echo -e "More detail on down/drain nodes:\n"
+      sinfo -R -o "%10n %6t %E" | head -1
+      for i in $nodes
+      do
+	sinfo -R -o "%10n %6t %E" | grep --color=always "$i "
+      done
+      echo ""
+    fi
 
     # if any nodes are in alloc state then warn user
     if [[ $allocstate == true ]]; then
@@ -256,7 +408,7 @@ display_nodes() {
 if [ $ntype == idnodes ]; then
 
     # Just display the node information and exit
-    display_nodes
+    display_nodes full
     exit 0
 
 fi
@@ -303,9 +455,9 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
 	# if fresh or latest
         if [[ $ntype == healthfresh ]]; then
-          ssh "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Healthcheck for node $n failed. Ensure that node exists, can accept ssh and /opt/oci-hpc/healthchecks/check_gpu_setup.py exists"; }
+          ssh -o "ConnectTimeout=5" "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Healthcheck for node $n failed. Ensure that node exists, can accept ssh and /opt/oci-hpc/healthchecks/check_gpu_setup.py exists"; }
         else
-          ssh "$n" "cat /tmp/latest_healthcheck.log" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Gathering the latest healthcheck for node $n failed."; echo "       Ensure that healthchecks are enabled on the cluster"; }
+          ssh -o "ConnectTimeout=5" "$n" "cat /tmp/latest_healthcheck.log" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Gathering the latest healthcheck for node $n failed."; echo "       Ensure that healthchecks are enabled on the cluster"; }
         fi
         echo " "
         let currentnumnodes++
@@ -319,7 +471,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
       echo -e "${YELLOW}Note:${NC} To simplify output only reporting warnings and errors"
       echo "----------------------------------------------------------------" 
       echo " "
-      pdsh -S -R ssh -w "$nodes" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py -l ERROR -l WARNING" || goodhealth=false
+      pdsh -S -R ssh -t 5 -w "$nodes" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py -l ERROR -l WARNING" || goodhealth=false
       echo " "
 
     fi # End serial/parallel healthchecks 
@@ -343,19 +495,9 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
         yes|Yes|YES|y|Y)
           echo "Proceeding..."
           echo " "
-	  if [ $(($numnodes % 2)) -ne 0 ]; then
-	    nodes+=" ${nodes%% *}"
-	  fi
-	  for i in $nodes
-	  do
-	    echo $i >> $date-hostfile.tmp
-	  done
-	  python3 ncclscout.py $date-hostfile.tmp
-	  rm $date-hostfile.tmp
-	  mv nccl_test.log $LOGS_FOLDER
-	  mv nccl_run_allreduce.sh.log $LOGS_FOLDER
-	  echo " "
-        ;;
+	  check_shape
+	  nccl_scout
+       ;;
         no|No|NO|n|N)
       	exit 1
         ;;
@@ -414,7 +556,7 @@ if [ $ntype == rebootall ]; then
         ;;
 
       no|No|NO|n|N)
-        echo "Aborting..."
+        echo "Exiting..."
         exit 1
         ;;
 
@@ -430,7 +572,35 @@ if [[ $ntype == tag ]]; then
     # Display node details
     display_nodes
     
-    # ask for confirmation before taggin
+    # Check if tag namespace is properly set up
+    # if not then set them up properly
+    echo -e "Checking if tags are properly set up..."
+    /usr/bin/python3 tagunhealthy.py --check
+    if [ $? -gt 0 ]; then
+      echo -e "Want nodenurse to set up tagging? (yes/no)"
+      read response
+      case $response in
+        yes|Yes|YES|y|Y)     
+          echo -e "Setting up tags...\n"
+          /usr/bin/python3 tagunhealthy.py --setup
+          if [ $? -gt 0 ];then 
+            echo -e "${RED}Error setting up tagging!${NC}"
+	    exit 1
+	  fi
+          echo ""
+	  ;;
+        no|No|NO|n|N)
+	  echo -e "Exiting...\n"
+	  exit 0
+	  ;;
+	*)
+	  echo "Exiting..."
+          exit 1
+          ;;
+      esac
+    fi
+    
+    # ask for confirmation before tagging
     echo -e "Are you sure you want to mark these nodes as unhealthy? (yes/no)"
     read response
     echo " " 
@@ -439,6 +609,9 @@ if [[ $ntype == tag ]]; then
       yes|Yes|YES|y|Y)
         echo "Proceeding..."
 	echo " "         
+
+	#### Check to see if tag exists in compartment
+	#### if not ask to create it
 
 	# loop through list of nodes, output details, send reset signal via ocicli, output success/failure. All output is also sent to a log titled <date>-nodenurse.log
 	for n in $nodes
@@ -472,7 +645,7 @@ if [[ $ntype == tag ]]; then
         ;;
 
       no|No|NO|n|N)
-        echo "Aborting..."
+        echo "Exiting..."
         exit 1
         ;;
 
@@ -482,3 +655,199 @@ if [[ $ntype == tag ]]; then
     esac
     
 fi
+
+# Main function for full nccl test on nodes
+if [[ $ntype == nccl ]]; then
+
+    display_nodes 
+
+    check_shape
+
+    echo -e "How many times to run the NCCL test?"
+    read numtimes
+    if [[ $numtimes =~ ^[1-9][0-9]*$ ]]; then
+
+      # mv nodeorderingbyrack.py if needed
+      if [ ! -f "/home/ubuntu/node_ordering_by_rack.py" ]; then
+        sudo cp /opt/oci-hpc/bin/node_ordering_by_rack.py /home/ubuntu/
+      fi
+
+      if [ ! -d "nccl_tests/" ]; then
+	mkdir nccl_tests/
+      fi
+
+      for i in $(seq 1 $numtimes)
+      do
+	sbatch -N $numnodes -w "$nodes" \
+	  --job-name=nodenurse_nccl \
+	  --output=nccl_tests/nccl_job-%j.out \
+	  --error=nccl_tests/nccl_job-%j.err \
+	  $script \
+	  | tee -a tmp_jobid
+      done
+
+      if [ $? -gt 0 ]; then
+        echo -e "\n${RED}ERROR:${NC}sbatch encountered a problem..\n"
+        exit 1
+      fi
+	
+      jobids=`cat tmp_jobid| awk '{print $4}'`
+      rm tmp_jobid
+      echo ""
+    
+      echo -e "\nWaiting for jobs to finish."
+      for j in $jobids
+      do
+        jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
+
+	while [[ $jobstate != "COMPLETED" ]]
+	do
+          jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
+	  sleep .25
+	  echo -ne "\r*   "
+	  sleep .25
+	  echo -ne "\r**  "
+	  sleep .25
+	  echo -ne "\r*** "
+	  sleep .25
+	  echo -ne "\r****"
+        done
+	echo -e "\n JobID: $j\n"
+	tail -10 nccl_tests/nccl_job-$j.out
+      done
+
+
+      echo -e "Full job outputs stored at:\n"
+      for i in $jobids
+      do
+        echo "nccl_tests/nccl_job-$i.out"
+      done
+
+      # clean up nccl script output
+      find "." -maxdepth 1 -type d -regex '^.*[0-9].*' -print0 | while IFS= read -r -d '' dir; do
+        mv "$dir" "nccl_tests/"
+      done
+	
+    else
+      echo -e "\n${RED}ERROR:${NC}Invalid input. Please enter a positive integer.\n"
+      exit 1
+    fi
+
+fi
+
+# Main function for sending nodes to ncclscout
+if [[ $ntype == ncclscout ]]; then
+
+    display_nodes
+    check_shape
+    nccl_scout
+
+fi
+
+# Main function for updating hosts
+if [[ $ntype == update ]]; then
+
+    display_nodes
+
+    echo -e "Select option to apply:
+1. Set node(s) to 'resume'
+2. Set node(s) to 'drain'
+3. Set node(s) to 'down'
+4. Create a 2 hour maintenance reservation on node(s)
+5. Quit
+
+${YELLOW}Reminder${NC}: Nodenurse won't put nodes that are in an allocated state into drain/down.
+  "
+    read response
+    case $response in
+      1) 
+         for i in $nodes
+         do
+           s=`generate_slurm_state $i`
+	   case $s in
+	     idle|mix|alloc|maint|drng) ;;
+	     *) sudo scontrol update nodename="$i" state=resume;;
+           esac
+         done
+      ;;
+
+      2)
+         echo "Enter a reason:"
+         read reason
+         for i in $nodes
+         do
+           s=`generate_slurm_state $i`
+	   case $s in
+	     drain|down|drng) ;;
+	     *) sudo scontrol update nodename="$nodes" state=drain reason="$reason";;
+           esac
+         done
+      ;;
+
+      3) 
+         echo "Enter a reason:"
+         read reason
+         for i in $nodes
+	 do
+           s=`generate_slurm_state $i`
+	   case $s in
+	     mix|alloc|drng|drain) echo -e "\n${RED}$i${NC} has a job running on it.\n\nRun the following command manually to place node into a down state, this may interrupt running jobs!\n\n    sudo scontrol update nodename=$i state=down reason=\"$reason\"" ;;
+	     *) sudo scontrol update nodename="$nodes" state=down reason="$reason";;
+           esac
+         done
+         ;;
+
+      4) 
+         sudo scontrol create reservation starttime=`date -u +'%FT%T'` flags=maint,ignore_jobs user=$USER duration=120 nodes="$nodes" && sleep 1 
+         if [ $? -ne 0 ]; then
+           echo -e "\n${RED}ERROR:${NC}Couldn't create slurm reservation.\nExiting..."
+           exit 1
+         fi
+	 
+         for i in $nodes
+         do
+           s=`generate_slurm_state $i`
+           if [ $s == "drain" ] || [ $s == "down" ]; then
+             sudo scontrol update nodename="$i" state=resume
+           fi
+         done
+
+         resname=`sinfo --reservation | tail -1 | grep "$USER" | awk '{print $1}'`
+         if [ -z $resname ];then resname="<RESV_NAME>";fi
+
+         echo -e "\n  Reservation created and nodes set to 'maint' state.
+
+  To schedule jobs on these nodes use the following commands
+
+  ### run cmd samples ###
+
+  sbatch -N <# nodes> --reservation=$resname example.sbatch
+
+  srun -w <specific nodename> --reservation=$resname --gpus=8 <cmd>
+
+  ### To take out of 'maint' state ###
+
+  sudo scontrol delete reservation=$resname
+
+  ### For more details ###
+
+  scontrol show reservation
+
+Current Reservations:"
+        sinfo --reservation
+        echo ""
+        ;;
+
+      5) exit 0 ;;
+
+      *) echo -e "Invalid Input\n"; exit 1 ;;
+
+    esac  
+   
+    echo -e "\n"
+    sleep 2
+    display_nodes
+    exit 0
+
+fi
+
