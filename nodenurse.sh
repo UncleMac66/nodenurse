@@ -295,12 +295,12 @@ check_shape() {
 	exit 1
     fi
 
-    shapes="BM.GPU.B4.8"
+    shapes=$(echo $shapes | awk -F '.' '{print $3}')
 
     # Check node shape and set the right sbatch script
     case "$shapes" in
-    BM.GPU.B4.8|BM.GPU.A100-v2.8) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce.sbatch";;
-    BM.GPU.H100.8|BM.GPU.H200.8) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sbatch";;
+    B4|A100) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce.sbatch";;
+    H100|H200) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sbatch";;
     *) echo -e "${RED}ERROR:${NC} Unsupported shape found. nccl testing only supports A100, H100 and H200"; exit 1 ;;
     esac
 
@@ -314,7 +314,7 @@ display_nodes(){
     echo "----------------------------------------------------------------"
     echo " " 
     if [[ $1 == "full" ]]; then
-      printf "%-10s %-25s %-15s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial #" "Shape" "Slurm State"
+      printf "%-10s %-25s %-15s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial" "Shape" "Slurm State"
       echo " " 
     else
       printf "%-10s %-25s %-10s\n" "Hostname" "Instance Name" "Slurm State"
@@ -676,7 +676,6 @@ if [[ $ntype == nccl ]]; then
 	mkdir nccl_tests/
       fi
 
-      searchdate=$(date +"%Y-%m-%dT%H%M")
       for i in $(seq 1 $numtimes)
       do
 	sbatch -N $numnodes -w "$nodes" \
@@ -686,33 +685,52 @@ if [[ $ntype == nccl ]]; then
 	  $script \
 	  | tee -a tmp_jobid
       done
+
+      if [ $? -gt 0 ]; then
+        echo -e "\n${RED}ERROR:${NC}sbatch encountered a problem..\n"
+        exit 1
+      fi
 	
       jobids=`cat tmp_jobid| awk '{print $4}'`
       rm tmp_jobid
       echo ""
     
-      sleep 1
-      printf "%-10s %-25s %-10s\n" "JobID" "Name" "Current State"
+      echo -e "\nWaiting for jobs to finish."
       for j in $jobids
       do
         jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
-        printf "%-10s %-25s %-10s\n" "$j" "nodenurse_nccl" "$jobstate"
-      done
-      echo -e "\nUse 'squeue' to check on above nccl jobs\n"
 
-      echo -e "Job outputs stored at:\n"
+	while [[ $jobstate != "COMPLETED" ]]
+	do
+          jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
+	  sleep .5
+	  echo -ne "\r*   "
+	  sleep .5
+	  echo -ne "\r**  "
+	  sleep .5
+	  echo -ne "\r*** "
+	  sleep .5
+	  echo -ne "\r****"
+        done
+	echo -e "\n JobID: $j\n"
+	tail -10 nccl_tests/nccl_job-$j.out
+      done
+
+
+      echo -e "Full job outputs stored at:\n"
       for i in $jobids
       do
-        echo "nccl_jobs/nccl_job-$i.out"
+        echo "nccl_tests/nccl_job-$i.out"
       done
 
-      # clean up nccl script output
+      
+      # clean up nccl script output best you can
       find "." -maxdepth 1 -type d -regex '^.*[0-9].*' -print0 | while IFS= read -r -d '' dir; do
         mv "$dir" "nccl_tests/"
       done
 	
     else
-      echo -e "${RED}ERROR:${NC}Invalid input. Please enter a positive integer.\n"
+      echo -e "\n${RED}ERROR:${NC}Invalid input. Please enter a positive integer.\n"
       exit 1
     fi
 
