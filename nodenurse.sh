@@ -703,13 +703,13 @@ if [[ $ntype == nccl ]]; then
 	while [[ $jobstate != "COMPLETED" ]]
 	do
           jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
-	  sleep .5
+	  sleep .25
 	  echo -ne "\r*   "
-	  sleep .5
+	  sleep .25
 	  echo -ne "\r**  "
-	  sleep .5
+	  sleep .25
 	  echo -ne "\r*** "
-	  sleep .5
+	  sleep .25
 	  echo -ne "\r****"
         done
 	echo -e "\n JobID: $j\n"
@@ -723,8 +723,7 @@ if [[ $ntype == nccl ]]; then
         echo "nccl_tests/nccl_job-$i.out"
       done
 
-      
-      # clean up nccl script output best you can
+      # clean up nccl script output
       find "." -maxdepth 1 -type d -regex '^.*[0-9].*' -print0 | while IFS= read -r -d '' dir; do
         mv "$dir" "nccl_tests/"
       done
