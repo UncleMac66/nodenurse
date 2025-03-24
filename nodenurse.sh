@@ -696,6 +696,8 @@ if [[ $ntype == nccl ]]; then
       echo ""
     
       echo -e "\nWaiting for jobs to finish."
+      goodjob=true
+      numtest=1
       for j in $jobids
       do
         jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
@@ -711,16 +713,25 @@ if [[ $ntype == nccl ]]; then
 	  echo -ne "\r*** "
 	  sleep .25
 	  echo -ne "\r****"
+	  if [[ $jobstate == "FAILED" ]]; then
+	    goodjob=false
+	    break;
+	  fi
         done
-	echo -e "\n JobID: $j\n"
-	tail -10 nccl_tests/nccl_job-$j.out
-      done
-
-
-      echo -e "Full job outputs stored at:\n"
-      for i in $jobids
-      do
-        echo "nccl_tests/nccl_job-$i.out"
+        
+        echo -e "\n----------------------------------------------------------------" 
+	echo -e "                 NCCL Test $numtest/$numtimes - ${YELLOW}JobID: $j${NC}"
+        echo -e "----------------------------------------------------------------\n" 
+	if [ $goodjob = true ]; then
+	  tail -10 nccl_tests/nccl_job-$j.out
+          echo -e "\nFull output stored at: nccl_tests/nccl_job-$j.out\n"
+        else
+          echo -e "\n${RED}ERROR:${NC}Job $j encountered a problem...\n"
+          tail -15 nccl_tests/nccl_job-$j.err
+          echo -e "\nFull error output stored at: nccl_tests/nccl_job-$j.err\n"
+	  goodjob=true
+	fi
+	let numtest++
       done
 
       # clean up nccl script output
@@ -756,7 +767,8 @@ if [[ $ntype == update ]]; then
 4. Create a 2 hour maintenance reservation on node(s)
 5. Quit
 
-${YELLOW}Reminder${NC}: Nodenurse won't put nodes that are in an allocated state into drain/down.
+${YELLOW}Reminder${NC}: Putting nodes that are allocated into a down state will kill those jobs immediately.
+                        Drain is nicer and will wait for the running job to finish. 
   "
     read response
     case $response in
@@ -764,7 +776,7 @@ ${YELLOW}Reminder${NC}: Nodenurse won't put nodes that are in an allocated state
          for i in $nodes
          do
            s=`generate_slurm_state $i`
-	   case $s in
+	   case "$s" in
 	     idle|mix|alloc|maint|drng) ;;
 	     *) sudo scontrol update nodename="$i" state=resume;;
            esac
@@ -777,7 +789,7 @@ ${YELLOW}Reminder${NC}: Nodenurse won't put nodes that are in an allocated state
          for i in $nodes
          do
            s=`generate_slurm_state $i`
-	   case $s in
+	   case "$s" in
 	     drain|down|drng) ;;
 	     *) sudo scontrol update nodename="$nodes" state=drain reason="$reason";;
            esac
@@ -790,8 +802,8 @@ ${YELLOW}Reminder${NC}: Nodenurse won't put nodes that are in an allocated state
          for i in $nodes
 	 do
            s=`generate_slurm_state $i`
-	   case $s in
-	     mix|alloc|drng|drain) echo -e "\n${RED}$i${NC} has a job running on it.\n\nRun the following command manually to place node into a down state, this may interrupt running jobs!\n\n    sudo scontrol update nodename=$i state=down reason=\"$reason\"" ;;
+	   case "$s" in
+	     down|drain) ;; 
 	     *) sudo scontrol update nodename="$nodes" state=down reason="$reason";;
            esac
          done
