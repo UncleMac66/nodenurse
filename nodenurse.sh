@@ -42,11 +42,11 @@ Examples:
 
 Notes:
   - nodenurse.sh gets compartment OCID from /opt/oci-hpc/conf/queues.conf.
-  If you use queues across compartments please double check this value and consider 
-  hard-coding it to your use case.
+    If you use queues across compartments please double check this value and consider 
+    hard-coding it to your use case.
 
   - In order for tagging hosts as unhealthy to work properly, your tenancy must be properly
-  whitelisted for unhealthy instance tagging and have the correct tag namespace and tags set up.
+    whitelisted for unhealthy instance tagging.
 
   - nodenurse.sh deduplicates your provided hostlist.
 
