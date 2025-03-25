@@ -300,7 +300,13 @@ check_shape() {
     # Check node shape and set the right sbatch script
     case "$shapes" in
     B4|A100) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce.sbatch";;
-    H100|H200) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sbatch";;
+    H100|H200)
+      if [ -f "/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sbatch" ]; then
+        script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sbatch"
+      else
+        script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100.sbatch"
+      fi
+    ;;
     *) echo -e "${RED}ERROR:${NC} Unsupported shape found. nccl testing only supports A100, H100 and H200"; exit 1 ;;
     esac
 
@@ -661,6 +667,11 @@ if [[ $ntype == nccl ]]; then
 
     display_nodes 
 
+    if [[ $allocstate == true ]] || [[ $goodstate == false ]]; then
+      echo -e "\n${RED}ERROR:${NC}Some nodes are in an allocated or down state. Can't run NCCL test.\n"
+      exit 1
+    fi
+
     check_shape
 
     echo -e "How many times to run the NCCL test?"
@@ -698,6 +709,8 @@ if [[ $ntype == nccl ]]; then
       echo -e "\nWaiting for jobs to finish."
       goodjob=true
       numtest=1
+      timetowait=0
+      output=true
       for j in $jobids
       do
         jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
@@ -706,32 +719,42 @@ if [[ $ntype == nccl ]]; then
 	do
           jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
 	  sleep .25
-	  echo -ne "\r*   "
+	  echo -ne "\r*                           "
 	  sleep .25
-	  echo -ne "\r**  "
+	  echo -ne "\r**                          "
 	  sleep .25
-	  echo -ne "\r*** "
+	  echo -ne "\r***                         "
 	  sleep .25
-	  echo -ne "\r****"
+	  echo -ne "\r****                        "
+	  let timetowait++
 	  if [[ $jobstate == "FAILED" ]]; then
 	    goodjob=false
-	    break;
+	    break
+	  fi
+	  if [[ $timetowait -gt 60 ]]; then
+	    echo -e "\n${YELLOW}WARNING:${NC} Timed out waiting for nccl Job $j.\n"
+	    output=false
+	    break
 	  fi
         done
         
         echo -e "\n----------------------------------------------------------------" 
-	echo -e "                 NCCL Test $numtest/$numtimes - ${YELLOW}JobID: $j${NC}"
+	echo -e "                NCCL Test $numtest/$numtimes - ${YELLOW}JobID: $j${NC}"
         echo -e "----------------------------------------------------------------\n" 
-	if [ $goodjob = true ]; then
-	  tail -10 nccl_tests/nccl_job-$j.out
-          echo -e "\nFull output stored at: nccl_tests/nccl_job-$j.out\n"
-        else
-          echo -e "\n${RED}ERROR:${NC}Job $j encountered a problem...\n"
+	if [ $goodjob = true ] && [ $output = true ]; then
+	  tail -15 nccl_tests/nccl_job-$j.out
+          echo -e "Full output stored at: nccl_tests/nccl_job-$j.out\n"
+	
+        elif [ $goodjob = false ] && [ $output = true ]; then
+          echo -e "${RED}ERROR:${NC} Job $j encountered a problem...\n"
           tail -15 nccl_tests/nccl_job-$j.err
           echo -e "\nFull error output stored at: nccl_tests/nccl_job-$j.err\n"
 	  goodjob=true
+        else
+	  echo -e "${YELLOW}WARNING:${NC} No output to show. Check on this job manually with squeue.\n"
 	fi
 	let numtest++
+	timetowait=0
       done
 
       # clean up nccl script output
