@@ -43,11 +43,11 @@ Examples:
 
 Notes:
   - nodenurse.sh gets compartment OCID from /opt/oci-hpc/conf/queues.conf.
-  If you use queues across compartments please double check this value and consider 
-  hard-coding it to your use case.
+    If you use queues across compartments please double check this value and consider 
+    hard-coding it to your use case.
 
   - In order for tagging hosts as unhealthy to work properly, your tenancy must be properly
-  whitelisted for unhealthy instance tagging and have the correct tag namespace and tags set up.
+    whitelisted for unhealthy instance tagging.
 
   - nodenurse.sh deduplicates your provided hostlist.
 
@@ -305,7 +305,13 @@ check_shape() {
     # Check node shape and set the right sbatch script
     case "$shapes" in
     B4|A100) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce.sbatch";;
-    H100|H200) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sbatch";;
+    H100|H200)
+      if [ -f "/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sbatch" ]; then
+        script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sbatch"
+      else
+        script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100.sbatch"
+      fi
+    ;;
     *) echo -e "${RED}ERROR:${NC} Unsupported shape found. nccl testing only supports A100, H100 and H200"; exit 1 ;;
     esac
 
@@ -683,6 +689,11 @@ if [[ $ntype == nccl ]]; then
 
     display_nodes 
 
+    if [[ $allocstate == true ]] || [[ $goodstate == false ]]; then
+      echo -e "\n${RED}ERROR:${NC}Some nodes are in an allocated or down state. Can't run NCCL test.\n"
+      exit 1
+    fi
+
     check_shape
 
     echo -e "How many times to run the NCCL test?"
@@ -718,6 +729,10 @@ if [[ $ntype == nccl ]]; then
       echo ""
     
       echo -e "\nWaiting for jobs to finish."
+      goodjob=true
+      numtest=1
+      timetowait=0
+      output=true
       for j in $jobids
       do
         jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
@@ -726,23 +741,42 @@ if [[ $ntype == nccl ]]; then
 	do
           jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
 	  sleep .25
-	  echo -ne "\r*   "
+	  echo -ne "\r*                           "
 	  sleep .25
-	  echo -ne "\r**  "
+	  echo -ne "\r**                          "
 	  sleep .25
-	  echo -ne "\r*** "
+	  echo -ne "\r***                         "
 	  sleep .25
-	  echo -ne "\r****"
+	  echo -ne "\r****                        "
+	  let timetowait++
+	  if [[ $jobstate == "FAILED" ]]; then
+	    goodjob=false
+	    break
+	  fi
+	  if [[ $timetowait -gt 60 ]]; then
+	    echo -e "\n${YELLOW}WARNING:${NC} Timed out waiting for nccl Job $j.\n"
+	    output=false
+	    break
+	  fi
         done
-	echo -e "\n JobID: $j\n"
-	tail -10 nccl_tests/nccl_job-$j.out
-      done
-
-
-      echo -e "Full job outputs stored at:\n"
-      for i in $jobids
-      do
-        echo "nccl_tests/nccl_job-$i.out"
+        
+        echo -e "\n----------------------------------------------------------------" 
+	echo -e "                NCCL Test $numtest/$numtimes - ${YELLOW}JobID: $j${NC}"
+        echo -e "----------------------------------------------------------------\n" 
+	if [ $goodjob = true ] && [ $output = true ]; then
+	  tail -15 nccl_tests/nccl_job-$j.out
+          echo -e "Full output stored at: nccl_tests/nccl_job-$j.out\n"
+	
+        elif [ $goodjob = false ] && [ $output = true ]; then
+          echo -e "${RED}ERROR:${NC} Job $j encountered a problem...\n"
+          tail -15 nccl_tests/nccl_job-$j.err
+          echo -e "\nFull error output stored at: nccl_tests/nccl_job-$j.err\n"
+	  goodjob=true
+        else
+	  echo -e "${YELLOW}WARNING:${NC} No output to show. Check on this job manually with squeue.\n"
+	fi
+	let numtest++
+	timetowait=0
       done
 
       # clean up nccl script output
@@ -778,7 +812,8 @@ if [[ $ntype == update ]]; then
 4. Create a 2 hour maintenance reservation on node(s)
 5. Quit
 
-${YELLOW}Reminder${NC}: Nodenurse won't put nodes that are in an allocated state into drain/down.
+${YELLOW}Reminder${NC}: Putting nodes that are allocated into a down state will kill those jobs immediately.
+                        Drain is nicer and will wait for the running job to finish. 
   "
     read response
     case $response in
@@ -786,7 +821,7 @@ ${YELLOW}Reminder${NC}: Nodenurse won't put nodes that are in an allocated state
          for i in $nodes
          do
            s=`generate_slurm_state $i`
-	   case $s in
+	   case "$s" in
 	     idle|mix|alloc|maint|drng) ;;
 	     *) sudo scontrol update nodename="$i" state=resume;;
            esac
@@ -799,7 +834,7 @@ ${YELLOW}Reminder${NC}: Nodenurse won't put nodes that are in an allocated state
          for i in $nodes
          do
            s=`generate_slurm_state $i`
-	   case $s in
+	   case "$s" in
 	     drain|down|drng) ;;
 	     *) sudo scontrol update nodename="$nodes" state=drain reason="$reason";;
            esac
@@ -812,8 +847,8 @@ ${YELLOW}Reminder${NC}: Nodenurse won't put nodes that are in an allocated state
          for i in $nodes
 	 do
            s=`generate_slurm_state $i`
-	   case $s in
-	     mix|alloc|drng|drain) echo -e "\n${RED}$i${NC} has a job running on it.\n\nRun the following command manually to place node into a down state, this may interrupt running jobs!\n\n    sudo scontrol update nodename=$i state=down reason=\"$reason\"" ;;
+	   case "$s" in
+	     down|drain) ;; 
 	     *) sudo scontrol update nodename="$nodes" state=down reason="$reason";;
            esac
          done
