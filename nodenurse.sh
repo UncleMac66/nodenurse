@@ -13,6 +13,7 @@ Options:
   -l, --latest           Gather the latest healthcheck from the node(s).
   -t, --tagunhealthy     Apply the unhealthy tag to the node(s)
   -r, --reboot           Hard reboot the node(s).
+  -e, --exec             Execute command on the node(s)
   -i, --identify         Display full details of the node(s) and exit.
   -n, --nccl             Run allreduce nccl test on the node(s).
   -s, --ncclscout        Run ncclscout (nccl pair test) on the node(s).
@@ -55,7 +56,7 @@ Notes:
 
 HELP_BRIEF="usage: $0 [-c, --healthcheck] [-l, --latest] [-r, --reboot]
                       [-i, --identify] [-t, --tagunhealthy] [-n, --nccl]
-		      [-s, --ncclscout] [-u, --update] [-h, --help]
+		      [-s, --ncclscout] [-u, --update] [-h, --help] [-e, --exec]
                       [Arguments {HOST(S),HOSTFILE,--all,--idle,--drain,--down,
 	                          --alldown,--partition <name>}]"
 
@@ -96,6 +97,10 @@ elif [[ $1 == "-s" ]] || [[ $1 == "--ncclscout" ]]; then
 
 elif [[ $1 == "-u" ]] || [[ $1 == "--update" ]]; then
     ntype=update
+    echo -e "\nUpdate Mode..."
+
+elif [[ $1 == "-e" ]] || [[ $1 == "--exec" ]]; then
+    ntype=exec
     echo -e "\nUpdate Mode..."
 
 elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]]; then
@@ -306,6 +311,42 @@ check_shape() {
 
 }
 
+execute(){
+
+    local execparallel=false
+    local cmd=""
+
+    # Check if the -p flag is present
+    if [[ "$1" == "-p" ]]; then
+        execparallel=true
+        shift
+    fi
+
+    # Get the command to run
+    cmd="$*"
+
+    if [[ $execparallel == false ]]; then
+
+      for n in $nodes
+      do
+        echo -e "\n----------------------------------------------------------------" 
+        echo -e "Output from node: ${YELLOW}$n${NC} -- Node $currentnumnodes/$numnodes"
+        echo -e "----------------------------------------------------------------\n" 
+        ssh -o "ConnectTimeout=5" "$n" "$cmd"
+        echo ""
+        let currentnumnodes++
+      done
+    else
+      echo -e "\n----------------------------------------------------------------" 
+      echo -e "Output from nodes: ${YELLOW}$nodes${NC}" | fold -s -w 65
+      echo -e "----------------------------------------------------------------\n" 
+      pdsh -S -R ssh -t 5 -w "$nodes" "$cmd"
+      echo ""
+    fi 
+
+
+}
+
 # Function displays the list of hosts along with relevant information, checking for nodes that can't be ssh'd or are in an allocated state in slurm
 display_nodes(){
 
@@ -444,36 +485,17 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
     # If serial or --latest then iterate through nodes 1x1
     if [[ $parallel == false ]] || [[ $ntype == healthlatest ]]; then
 
-      # Loop through each node and grab the healthcheck
-      for n in $nodes
-      do
-	# Output heading
-        echo " "
-        echo "----------------------------------------------------------------" 
-        echo -e "Healthcheck from node: ${YELLOW}$n${NC} -- Node $currentnumnodes/$numnodes"
-        echo "----------------------------------------------------------------" 
-
-	# if fresh or latest
-        if [[ $ntype == healthfresh ]]; then
-          ssh -o "ConnectTimeout=5" "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Healthcheck for node $n failed. Ensure that node exists, can accept ssh and /opt/oci-hpc/healthchecks/check_gpu_setup.py exists"; }
-        else
-          ssh -o "ConnectTimeout=5" "$n" "cat /tmp/latest_healthcheck.log" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Gathering the latest healthcheck for node $n failed."; echo "       Ensure that healthchecks are enabled on the cluster"; }
-        fi
-        echo " "
-        let currentnumnodes++
-      done
+      # if fresh or latest
+      if [[ $ntype == healthfresh ]]; then
+        execute sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py || { goodhealth=false;echo -e "${RED}ERROR:${NC} Healthcheck for node $n failed. Ensure that node exists, can accept ssh and /opt/oci-hpc/healthchecks/check_gpu_setup.py exists"; }
+      else
+        execute cat /tmp/latest_healthcheck.log || { goodhealth=false;echo -e "${RED}ERROR:${NC} Gathering the latest healthcheck for node $n failed."; echo "       Ensure that healthchecks are enabled on the cluster"; }
+      fi
+      echo " "
     else
       # otherwise run healthchecks in parallel
-      # output heading
-      echo " "
-      echo "----------------------------------------------------------------" 
-      echo -e "Healthchecks from nodes: $nodes\n" | fold -s -w 65
-      echo -e "${YELLOW}Note:${NC} To simplify output only reporting warnings and errors"
-      echo "----------------------------------------------------------------" 
-      echo " "
-      pdsh -S -R ssh -t 5 -w "$nodes" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py -l ERROR -l WARNING" || goodhealth=false
-      echo " "
-
+      echo -e "\nNote: To keep output brief, only reporting on errors and warnings"
+      execute -p sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py -l ERROR -l WARNING || goodhealth=false
     fi # End serial/parallel healthchecks 
 
     # If successful then output a good completion status, if errors present then inform user
