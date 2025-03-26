@@ -13,6 +13,7 @@ Options:
   -l, --latest           Gather the latest healthcheck from the node(s).
   -t, --tagunhealthy     Apply the unhealthy tag to the node(s)
   -r, --reboot           Hard reboot the node(s).
+  -e, --exec             Execute command on the node(s)
   -i, --identify         Display full details of the node(s) and exit.
   -n, --nccl             Run allreduce nccl test on the node(s).
   -s, --ncclscout        Run ncclscout (nccl pair test) on the node(s).
@@ -55,7 +56,7 @@ Notes:
 
 HELP_BRIEF="usage: $0 [-c, --healthcheck] [-l, --latest] [-r, --reboot]
                       [-i, --identify] [-t, --tagunhealthy] [-n, --nccl]
-		      [-s, --ncclscout] [-u, --update] [-h, --help]
+		      [-s, --ncclscout] [-u, --update] [-h, --help] [-e, --exec]
                       [Arguments {HOST(S),HOSTFILE,--all,--idle,--drain,--down,
 	                          --alldown,--partition <name>}]"
 
@@ -97,6 +98,10 @@ elif [[ $1 == "-s" ]] || [[ $1 == "--ncclscout" ]]; then
 elif [[ $1 == "-u" ]] || [[ $1 == "--update" ]]; then
     ntype=update
     echo -e "\nUpdate Mode..."
+
+elif [[ $1 == "-e" ]] || [[ $1 == "--exec" ]]; then
+    ntype=exec
+    echo -e "\nRemote exec Mode..."
 
 elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]]; then
     echo "$HELP_MESSAGE"
@@ -312,13 +317,49 @@ check_shape() {
 
 }
 
+execute(){
+
+    local currentnumnodes=1
+    local execparallel=false
+    local cmd=""
+
+    # Check if the -p flag is present
+    if [[ "$1" == "-p" ]]; then
+        execparallel=true
+        shift
+    fi
+
+    # Get the command to run
+    cmd="$*"
+
+    if [[ $execparallel == false ]]; then
+
+      for n in $nodes
+      do
+        echo -e "\n----------------------------------------------------------------" 
+        echo -e "Output from node: ${YELLOW}$n${NC} -- Node $currentnumnodes/$numnodes"
+        echo -e "----------------------------------------------------------------\n" 
+        ssh -o "ConnectTimeout=5" "$n" "$cmd"
+        echo ""
+        let currentnumnodes++
+      done
+    else
+      echo -e "\n----------------------------------------------------------------" 
+      echo -e "Output from nodes: ${YELLOW}$nodes${NC}" | fold -s -w 65
+      echo -e "----------------------------------------------------------------\n" 
+      pdsh -S -R ssh -t 5 -w "$nodes" "$cmd"
+      echo ""
+    fi 
+
+
+}
+
 # Function displays the list of hosts along with relevant information, checking for nodes that can't be ssh'd or are in an allocated state in slurm
 display_nodes(){
 
     echo "----------------------------------------------------------------"
     echo "---------------------- `date -u +'%F %T'` ---------------------"
-    echo "----------------------------------------------------------------"
-    echo " " 
+    echo -e "----------------------------------------------------------------\n"
     if [[ $1 == "full" ]]; then
       printf "%-10s %-25s %-15s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial" "Shape" "Slurm State"
       echo " " 
@@ -423,7 +464,6 @@ fi
 if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
     # Initialize the node count and display node details
-    currentnumnodes=1
     display_nodes
 
     # Prompt user for parallelism if running fresh healthcheck and number of nodes is greater than 2 otherwise just run sequentially
@@ -450,45 +490,24 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
     # If serial or --latest then iterate through nodes 1x1
     if [[ $parallel == false ]] || [[ $ntype == healthlatest ]]; then
 
-      # Loop through each node and grab the healthcheck
-      for n in $nodes
-      do
-	# Output heading
-        echo " "
-        echo "----------------------------------------------------------------" 
-        echo -e "Healthcheck from node: ${YELLOW}$n${NC} -- Node $currentnumnodes/$numnodes"
-        echo "----------------------------------------------------------------" 
-
-	# if fresh or latest
-        if [[ $ntype == healthfresh ]]; then
-          ssh -o "ConnectTimeout=5" "$n" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Healthcheck for node $n failed. Ensure that node exists, can accept ssh and /opt/oci-hpc/healthchecks/check_gpu_setup.py exists"; }
-        else
-          ssh -o "ConnectTimeout=5" "$n" "cat /tmp/latest_healthcheck.log" || { goodhealth=false;echo -e "${RED}ERROR:${NC} Gathering the latest healthcheck for node $n failed."; echo "       Ensure that healthchecks are enabled on the cluster"; }
-        fi
-        echo " "
-        let currentnumnodes++
-      done
+      # if fresh or latest
+      if [[ $ntype == healthfresh ]]; then
+        execute sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py || { goodhealth=false;echo -e "${RED}ERROR:${NC} Healthcheck for node $n failed. Ensure that node exists, can accept ssh and /opt/oci-hpc/healthchecks/check_gpu_setup.py exists"; }
+      else
+        execute cat /tmp/latest_healthcheck.log || { goodhealth=false;echo -e "${RED}ERROR:${NC} Gathering the latest healthcheck for node $n failed."; echo "       Ensure that healthchecks are enabled on the cluster"; }
+      fi
+      echo " "
     else
       # otherwise run healthchecks in parallel
-      # output heading
-      echo " "
-      echo "----------------------------------------------------------------" 
-      echo -e "Healthchecks from nodes: $nodes\n" | fold -s -w 65
-      echo -e "${YELLOW}Note:${NC} To simplify output only reporting warnings and errors"
-      echo "----------------------------------------------------------------" 
-      echo " "
-      pdsh -S -R ssh -t 5 -w "$nodes" "sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py -l ERROR -l WARNING" || goodhealth=false
-      echo " "
-
+      echo -e "\nNote: To keep output brief, only reporting on errors and warnings"
+      execute -p sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py -l ERROR -l WARNING || goodhealth=false
     fi # End serial/parallel healthchecks 
 
     # If successful then output a good completion status, if errors present then inform user
     if [ $goodhealth == "true" ]; then
-      echo -e "${GREEN}Complete:${NC} Healthchecks gathered on $numnodes nodes"
-      echo " "
+      echo -e "${GREEN}Complete:${NC} Healthchecks gathered on $numnodes nodes\n"
     else
-      echo -e "${RED}WARNING:${NC} Healthcheck gathering on $numnodes nodes completed with errors"
-      echo " " 
+      echo -e "${RED}WARNING:${NC} Healthcheck gathering on $numnodes nodes completed with errors\n"
     fi
 
 
@@ -499,8 +518,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
       echo " "
       case $response in
         yes|Yes|YES|y|Y)
-          echo "Proceeding..."
-          echo " "
+          echo -e "Proceeding...\n"
 	  check_shape
 	  nccl_scout
        ;;
@@ -509,6 +527,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
         ;;
         *)
           echo "Invalid input. Please enter yes or no."
+	  exit 1
         ;;
       esac
     fi
@@ -527,8 +546,7 @@ if [ $ntype == rebootall ]; then
     case $response in
 
       yes|Yes|YES|y|Y)
-        echo "Proceeding..."
-	echo " "         
+        echo -e "Proceeding...\n"
 
 	# loop through list of nodes, output details, send reset signal via ocicli, output success/failure. All output is also sent to a log titled <date>-nodenurse.log
 	for n in $nodes
@@ -542,8 +560,7 @@ if [ $ntype == rebootall ]; then
           echo -e "Rebooting ${YELLOW}$n${NC}" | tee -a $LOG_PATH
 	  echo -e "Instance Name: $inst" | tee -a $LOG_PATH
 	  echo -e "Serial Number: $serial" | tee -a $LOG_PATH
-	  echo -e "OCID: $ocid" | tee -a $LOG_PATH
-	  echo " "
+	  echo -e "OCID: $ocid\n" | tee -a $LOG_PATH
 
 	  # Send hard reboot signal to the node using the generated ocid
           oci compute instance action --instance-id $ocid --action RESET --auth instance_principal >> $LOG_PATH || reboot=false	
@@ -555,8 +572,7 @@ if [ $ntype == rebootall ]; then
 	  else 
 	    echo -e "$(date -u '+%Y%m%d%H%M') - ${GREEN}Success${NC} - Hard reset sent to node ${YELLOW}$n${NC}" | tee -a $LOG_PATH
 	  fi
-	  echo "----------------------------------------------------------------" | tee -a $LOG_PATH
-	  echo " " | tee -a $LOG_PATH
+	  echo -e "----------------------------------------------------------------\n" | tee -a $LOG_PATH
 
         done # End reboot loop
         ;;
@@ -613,8 +629,7 @@ if [[ $ntype == tag ]]; then
     case $response in
 
       yes|Yes|YES|y|Y)
-        echo "Proceeding..."
-	echo " "         
+        echo -e "Proceeding...\n"
 
 	#### Check to see if tag exists in compartment
 	#### if not ask to create it
@@ -631,8 +646,7 @@ if [[ $ntype == tag ]]; then
           echo -e "Tagging ${YELLOW}$n${NC} as unhealthy" | tee -a $LOG_PATH
 	  echo -e "Instance Name: $inst" | tee -a $LOG_PATH
 	  echo -e "Serial Number: $serial" | tee -a $LOG_PATH
-	  echo -e "OCID: $ocid" | tee -a $LOG_PATH
-	  echo " "
+	  echo -e "OCID: $ocid\n" | tee -a $LOG_PATH
 
 	  # Send ocid through tagunhealth.py
           /usr/bin/python3 tagunhealthy.py --instance-id $ocid >> $LOG_PATH || goodtag=false	
@@ -644,8 +658,7 @@ if [[ $ntype == tag ]]; then
 	  else 
 	    echo -e "$(date -u '+%Y%m%d%H%M') - ${GREEN}Success${NC} - Node ${YELLOW}$n${NC} marked as unhealthy" | tee -a $LOG_PATH
 	  fi
-	  echo "----------------------------------------------------------------" | tee -a $LOG_PATH
-	  echo " " | tee -a $LOG_PATH
+	  echo -e "----------------------------------------------------------------\n" | tee -a $LOG_PATH
 
         done # End tagging loop
         ;;
@@ -886,3 +899,43 @@ Current Reservations:"
 
 fi
 
+if [[ $ntype == exec ]]; then
+
+    display_nodes
+
+    # Ask for cmd to run
+
+    echo -e "Please enter the command you'd like to run on these node(s).\n"
+    echo -ne "$ "
+    read cmd
+
+    # Ask if parallel
+    echo -e "\nDo you want to run this in parallel? (yes/no/quit)"
+    read response
+    case $response in 
+      yes|YES|Yes|y|Y)
+        parallel=true
+      ;;
+      no|NO|No|n|N)
+        parallel=false
+      ;;
+      q|Q|quit|QUIT|Quit)
+       exit 0
+      ;;
+      *)
+      echo "Invalid input. Please enter yes or no."
+      exit 1
+      ;;
+    esac
+
+    # Run commands
+
+    if [[ $parallel == true ]]; then
+      execute -p $cmd
+      exit 0
+    else
+      execute $cmd
+      exit 0
+    fi
+
+fi
