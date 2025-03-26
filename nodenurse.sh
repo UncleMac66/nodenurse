@@ -425,6 +425,7 @@ display_nodes(){
       do
 	sinfo -R -o "%25n %6t %E" | grep --color=always "$i "
       done
+      goodstate=true
       echo ""
     fi
 
