@@ -101,7 +101,7 @@ elif [[ $1 == "-u" ]] || [[ $1 == "--update" ]]; then
 
 elif [[ $1 == "-e" ]] || [[ $1 == "--exec" ]]; then
     ntype=exec
-    echo -e "\nUpdate Mode..."
+    echo -e "\nRemote exec Mode..."
 
 elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]]; then
     echo "$HELP_MESSAGE"
@@ -319,6 +319,7 @@ check_shape() {
 
 execute(){
 
+    local currentnumnodes=1
     local execparallel=false
     local cmd=""
 
@@ -358,8 +359,7 @@ display_nodes(){
 
     echo "----------------------------------------------------------------"
     echo "---------------------- `date -u +'%F %T'` ---------------------"
-    echo "----------------------------------------------------------------"
-    echo " " 
+    echo -e "----------------------------------------------------------------\n"
     if [[ $1 == "full" ]]; then
       printf "%-10s %-25s %-15s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial" "Shape" "Slurm State"
       echo " " 
@@ -464,7 +464,6 @@ fi
 if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
     # Initialize the node count and display node details
-    currentnumnodes=1
     display_nodes
 
     # Prompt user for parallelism if running fresh healthcheck and number of nodes is greater than 2 otherwise just run sequentially
@@ -506,11 +505,9 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
     # If successful then output a good completion status, if errors present then inform user
     if [ $goodhealth == "true" ]; then
-      echo -e "${GREEN}Complete:${NC} Healthchecks gathered on $numnodes nodes"
-      echo " "
+      echo -e "${GREEN}Complete:${NC} Healthchecks gathered on $numnodes nodes\n"
     else
-      echo -e "${RED}WARNING:${NC} Healthcheck gathering on $numnodes nodes completed with errors"
-      echo " " 
+      echo -e "${RED}WARNING:${NC} Healthcheck gathering on $numnodes nodes completed with errors\n"
     fi
 
 
@@ -521,8 +518,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
       echo " "
       case $response in
         yes|Yes|YES|y|Y)
-          echo "Proceeding..."
-          echo " "
+          echo -e "Proceeding...\n"
 	  check_shape
 	  nccl_scout
        ;;
@@ -531,6 +527,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
         ;;
         *)
           echo "Invalid input. Please enter yes or no."
+	  exit 1
         ;;
       esac
     fi
@@ -549,8 +546,7 @@ if [ $ntype == rebootall ]; then
     case $response in
 
       yes|Yes|YES|y|Y)
-        echo "Proceeding..."
-	echo " "         
+        echo -e "Proceeding...\n"
 
 	# loop through list of nodes, output details, send reset signal via ocicli, output success/failure. All output is also sent to a log titled <date>-nodenurse.log
 	for n in $nodes
@@ -564,8 +560,7 @@ if [ $ntype == rebootall ]; then
           echo -e "Rebooting ${YELLOW}$n${NC}" | tee -a $LOG_PATH
 	  echo -e "Instance Name: $inst" | tee -a $LOG_PATH
 	  echo -e "Serial Number: $serial" | tee -a $LOG_PATH
-	  echo -e "OCID: $ocid" | tee -a $LOG_PATH
-	  echo " "
+	  echo -e "OCID: $ocid\n" | tee -a $LOG_PATH
 
 	  # Send hard reboot signal to the node using the generated ocid
           oci compute instance action --instance-id $ocid --action RESET --auth instance_principal >> $LOG_PATH || reboot=false	
@@ -577,8 +572,7 @@ if [ $ntype == rebootall ]; then
 	  else 
 	    echo -e "$(date -u '+%Y%m%d%H%M') - ${GREEN}Success${NC} - Hard reset sent to node ${YELLOW}$n${NC}" | tee -a $LOG_PATH
 	  fi
-	  echo "----------------------------------------------------------------" | tee -a $LOG_PATH
-	  echo " " | tee -a $LOG_PATH
+	  echo -e "----------------------------------------------------------------\n" | tee -a $LOG_PATH
 
         done # End reboot loop
         ;;
@@ -635,8 +629,7 @@ if [[ $ntype == tag ]]; then
     case $response in
 
       yes|Yes|YES|y|Y)
-        echo "Proceeding..."
-	echo " "         
+        echo -e "Proceeding...\n"
 
 	#### Check to see if tag exists in compartment
 	#### if not ask to create it
@@ -653,8 +646,7 @@ if [[ $ntype == tag ]]; then
           echo -e "Tagging ${YELLOW}$n${NC} as unhealthy" | tee -a $LOG_PATH
 	  echo -e "Instance Name: $inst" | tee -a $LOG_PATH
 	  echo -e "Serial Number: $serial" | tee -a $LOG_PATH
-	  echo -e "OCID: $ocid" | tee -a $LOG_PATH
-	  echo " "
+	  echo -e "OCID: $ocid\n" | tee -a $LOG_PATH
 
 	  # Send ocid through tagunhealth.py
           /usr/bin/python3 tagunhealthy.py --instance-id $ocid >> $LOG_PATH || goodtag=false	
@@ -666,8 +658,7 @@ if [[ $ntype == tag ]]; then
 	  else 
 	    echo -e "$(date -u '+%Y%m%d%H%M') - ${GREEN}Success${NC} - Node ${YELLOW}$n${NC} marked as unhealthy" | tee -a $LOG_PATH
 	  fi
-	  echo "----------------------------------------------------------------" | tee -a $LOG_PATH
-	  echo " " | tee -a $LOG_PATH
+	  echo -e "----------------------------------------------------------------\n" | tee -a $LOG_PATH
 
         done # End tagging loop
         ;;
@@ -908,3 +899,43 @@ Current Reservations:"
 
 fi
 
+if [[ $ntype == exec ]]; then
+
+    display_nodes
+
+    # Ask for cmd to run
+
+    echo -e "Please enter the command you'd like to run on these node(s).\n"
+    echo -ne "$ "
+    read cmd
+
+    # Ask if parallel
+    echo -e "\nDo you want to run this in parallel? (yes/no/quit)"
+    read response
+    case $response in 
+      yes|YES|Yes|y|Y)
+        parallel=true
+      ;;
+      no|NO|No|n|N)
+        parallel=false
+      ;;
+      q|Q|quit|QUIT|Quit)
+       exit 0
+      ;;
+      *)
+      echo "Invalid input. Please enter yes or no."
+      exit 1
+      ;;
+    esac
+
+    # Run commands
+
+    if [[ $parallel == true ]]; then
+      execute -p $cmd
+      exit 0
+    else
+      execute $cmd
+      exit 0
+    fi
+
+fi

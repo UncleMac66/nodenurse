@@ -1,8 +1,7 @@
 # ./nodenurse.sh
 
-Helper tool to diagnose, reboot, and tag unhealthy nodes in a slurm based GPU cluster. Specifically designed to work out of the box with environments set up with [oci-hpc](https://github.com/oracle-quickstart/oci-hpc)
+Helper tool to test, diagnose, reboot, and tag unhealthy nodes in a slurm based GPU cluster. Specifically designed to work out of the box with GPU environments set up with [oci-hpc](https://github.com/oracle-quickstart/oci-hpc)
 
-nodenurse.sh relies on `tagunhealthy.py` and `ncclscout.py` being in the same directory for full functionality
 
 ```
 Usage: ./nodenurse.sh [OPTION] [ARGUMENT]
@@ -17,8 +16,9 @@ Options:
   -l, --latest           Gather the latest healthcheck from the node(s).
   -t, --tagunhealthy     Apply the unhealthy tag to the node(s)
   -r, --reboot           Hard reboot the node(s).
+  -e, --exec             Execute command on the node(s)
   -i, --identify         Display full details of the node(s) and exit.
-* -n, --nccl             Run allreduce nccl test on the node(s).
+  -n, --nccl             Run allreduce nccl test on the node(s).
   -s, --ncclscout        Run ncclscout (nccl pair test) on the node(s).
   -u, --update           Update the slurm state on the node(s).
 
@@ -27,15 +27,16 @@ Arguments:
 
   --all,-a               Use all hosts that are listed in slurm.
 
+  --idle                 Use hosts that are in a 'idle' state in slurm.
+
   --drain                Use hosts that are in a 'drain' state in slurm.
 
   --down                 Use hosts that are in a 'down' state in slurm.
 
-  --idle                 Use hosts that are in a 'idle' state in slurm.
+  --alldown              Use hosts that are in a 'down' or 'drain' state in slurm.
 
   --partition,-p <name>  Use all nodes in a specified slurm partition name (i.e. compute).
 
-  * indicates function is a work in progress
 
 Examples:
   ./nodenurse.sh -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
@@ -45,13 +46,13 @@ Examples:
 
 Notes:
   - nodenurse.sh gets compartment OCID from /opt/oci-hpc/conf/queues.conf.
-  If you use queues across compartments please double check this value and consider
-  hard-coding it to your use case.
+    If you use queues across compartments please double check this value and consider
+    hard-coding it to your use case.
 
   - In order for tagging hosts as unhealthy to work properly, your tenancy must be properly
-  whitelisted for unhealthy instance tagging and have the correct tag namespace and tags set up.
+    whitelisted for unhealthy instance tagging.
 
-  - nodenurse.sh automatically deduplicates your provided hostlist.
+  - nodenurse.sh deduplicates your provided hostlist.
 
   - tagunhealthy.py must be present in same directory as nodenurse.sh for tagging to work.
 ```
