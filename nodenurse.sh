@@ -274,8 +274,8 @@ nccl_scout() {
 
     python3 ncclscout.py $date-hostfile.tmp
     rm $date-hostfile.tmp
-    mv nccl_test.log $LOGS_FOLDER
-    mv nccl_run_allreduce.sh.log $LOGS_FOLDER
+    mv nccl_test.log nccl_tests/ncclscout_$date.log
+    mv nccl_run_allreduce.sh.log nccl_tests/ncclscout_allreduce_$date.log
     echo ""
 
 }
