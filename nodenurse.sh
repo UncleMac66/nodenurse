@@ -354,6 +354,8 @@ execute(){
 # Function displays the list of hosts along with relevant information, checking for nodes that can't be ssh'd or are in an allocated state in slurm
 display_nodes(){
 
+    goodstate=true
+
     echo "----------------------------------------------------------------"
     echo "---------------------- `date -u +'%F %T'` ---------------------"
     echo -e "----------------------------------------------------------------\n"
@@ -425,7 +427,6 @@ display_nodes(){
       do
 	sinfo -R -o "%25n %6t %E" | grep --color=always "$i "
       done
-      goodstate=true
       echo ""
     fi
 
@@ -679,7 +680,7 @@ if [[ $ntype == nccl ]]; then
     display_nodes 
 
     if [[ $allocstate == true ]] || [[ $goodstate == false ]]; then
-      echo -e "\n${RED}ERROR:${NC}Some nodes are in an allocated or down state. Can't run NCCL test.\n"
+      echo -e "\n${RED}ERROR:${NC} Some nodes are in an allocated or down state. Can't run NCCL test.\n"
       exit 1
     fi
 
@@ -698,6 +699,7 @@ if [[ $ntype == nccl ]]; then
 	mkdir nccl_tests/
       fi
 
+      echo ""
       for i in $(seq 1 $numtimes)
       do
 	sbatch -N $numnodes -w "$nodes" \
@@ -717,11 +719,12 @@ if [[ $ntype == nccl ]]; then
       rm tmp_jobid
       echo ""
     
-      echo -e "\nWaiting for jobs to finish."
+      echo -e "Waiting for jobs to finish.\n"
       goodjob=true
       numtest=1
       timetowait=0
       output=true
+
       for j in $jobids
       do
         jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
@@ -730,27 +733,27 @@ if [[ $ntype == nccl ]]; then
 	do
           jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
 	  sleep .25
-	  echo -ne "\r*                           "
+	  echo -ne "\r |                          "
 	  sleep .25
-	  echo -ne "\r**                          "
+	  echo -ne "\r /                          "
 	  sleep .25
-	  echo -ne "\r***                         "
+	  echo -ne "\r -                          "
 	  sleep .25
-	  echo -ne "\r****                        "
+	  echo -ne "\r \\                          "
 	  let timetowait++
 	  if [[ $jobstate == "FAILED" ]]; then
 	    goodjob=false
 	    break
 	  fi
-	  if [[ $timetowait -gt 60 ]]; then
+	  if [[ $timetowait -gt 90 ]]; then
 	    echo -e "\n${YELLOW}WARNING:${NC} Timed out waiting for nccl Job $j.\n"
 	    output=false
 	    break
 	  fi
         done
-        
+
         echo -e "\n----------------------------------------------------------------" 
-	echo -e "                NCCL Test $numtest/$numtimes - ${YELLOW}JobID: $j${NC}"
+	echo -e "NCCL Test $numtest/$numtimes - ${YELLOW}JobID: $j${NC} - Time taken ~ $timetowait Seconds"
         echo -e "----------------------------------------------------------------\n" 
 	if [ $goodjob = true ] && [ $output = true ]; then
 	  tail -15 nccl_tests/nccl_job-$j.out
