@@ -302,6 +302,8 @@ check_shape() {
 
     shapes=$(echo $shapes | awk -F '.' '{print $3}')
 
+    shapes="A100"
+
     # Check node shape and set the right sbatch script
     case "$shapes" in
     B4|A100) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce.sbatch";;
