@@ -263,9 +263,6 @@ nccl_scout() {
       echo -e "\nMust have at least 2 nodes!"
       exit 1
     fi
-    if [ $(($numnodes % 2)) -ne 0 ]; then
-      nodes+=" ${nodes%% *}"
-    fi
 
     for i in $nodes
     do
@@ -361,10 +358,10 @@ display_nodes(){
     echo "---------------------- `date -u +'%F %T'` ---------------------"
     echo -e "----------------------------------------------------------------\n"
     if [[ $1 == "full" ]]; then
-      printf "%-10s %-25s %-15s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial" "Shape" "Slurm State"
+      printf "%-25s %-25s %-15s %-15s %-10s\n" "Hostname" "Instance Name" "Host Serial" "Shape" "Slurm State"
       echo " " 
     else
-      printf "%-10s %-25s %-10s\n" "Hostname" "Instance Name" "Slurm State"
+      printf "%-25s %-25s %-10s\n" "Hostname" "Instance Name" "Slurm State"
       echo " " 
     fi
 
@@ -404,13 +401,13 @@ display_nodes(){
           goodssh=false
         fi
 
-	printf "%-10s %-25s %-15s %-15s %-10s\n" "$n" "$inst" "$serial" "$shape" "$state"
+	printf "%-25s %-25s %-15s %-15s %-10s\n" "$n" "$inst" "$serial" "$shape" "$state"
         echo -e "  \u21B3 $ocid"
         echo " "
 
       else
 
-        printf "%-10s %-25s %-10s\n" "$n" "$inst" "$state"
+        printf "%-25s %-25s %-10s\n" "$n" "$inst" "$state"
         echo " "
 
       fi
@@ -423,10 +420,10 @@ display_nodes(){
     # If down/drain nodes then display reasons
     if [ -n "$(sinfo -R -h)" ] && [ $goodstate == "false" ];then
       echo -e "More detail on down/drain nodes:\n"
-      sinfo -R -o "%10n %6t %E" | head -1
+      sinfo -R -o "%25n %6t %E" | head -1
       for i in $nodes
       do
-	sinfo -R -o "%10n %6t %E" | grep --color=always "$i "
+	sinfo -R -o "%25n %6t %E" | grep --color=always "$i "
       done
       echo ""
     fi
@@ -796,7 +793,7 @@ if [[ $ntype == update ]]; then
 
     display_nodes
 
-    echo -e "Select option to apply:
+    echo -ne "Select option to apply:
 1. Set node(s) to 'resume'
 2. Set node(s) to 'drain'
 3. Set node(s) to 'down'
@@ -804,8 +801,9 @@ if [[ $ntype == update ]]; then
 5. Quit
 
 ${YELLOW}Reminder${NC}: Putting nodes that are allocated into a down state will kill those jobs immediately.
-                        Drain is nicer and will wait for the running job to finish. 
-  "
+          Drain is nicer and will wait for the running job to finish. 
+
+Selection: "
     read response
     case $response in
       1) 
@@ -820,7 +818,7 @@ ${YELLOW}Reminder${NC}: Putting nodes that are allocated into a down state will 
       ;;
 
       2)
-         echo "Enter a reason:"
+         echo -ne "Enter a reason: "
          read reason
          for i in $nodes
          do
@@ -833,7 +831,7 @@ ${YELLOW}Reminder${NC}: Putting nodes that are allocated into a down state will 
       ;;
 
       3) 
-         echo "Enter a reason:"
+         echo -ne "Enter a reason:"
          read reason
          for i in $nodes
 	 do
