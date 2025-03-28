@@ -8,16 +8,17 @@ Description:
   on them which can be helpful when troubleshooting an OCI-HPC Slurm based cluster.
 
 Options:
-  -h, --help             Display this message and exit.
-  -c, --healthcheck      Run a fresh healthcheck on the node(s).
-  -l, --latest           Gather the latest healthcheck from the node(s).
-  -t, --tagunhealthy     Apply the unhealthy tag to the node(s)
-  -r, --reboot           Hard reboot the node(s).
-  -e, --exec             Execute command on the node(s)
-  -i, --identify         Display full details of the node(s) and exit.
-  -n, --nccl             Run allreduce nccl test on the node(s).
-  -s, --ncclscout        Run ncclscout (nccl pair test) on the node(s).
-  -u, --update           Update the slurm state on the node(s).
+  -h, help             Display this message and exit.
+  -c, healthcheck      Run a fresh healthcheck on the node(s).
+  -l, latest           Gather the latest healthcheck from the node(s).
+  -t, tag              Apply the unhealthy tag to the node(s)
+  -r, reboot           Hard reboot the node(s).
+  -e, exec             Execute command on the node(s)
+  -i, identify         Display full details of the node(s) and exit.
+  -n, nccl             Run allreduce nccl test on the node(s).
+  -s, ncclscout        Run ncclscout (nccl pair test) on the node(s).
+  -u, update           Update the slurm state on the node(s).
+  -v, validate         Run nodes through checks to ensure ansible scripts will work.
 
 Arguments:
   HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2).
@@ -39,7 +40,7 @@ Examples:
   $0 -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
   $0 -r gpu-1                 sends a hard reboot signal to node 'gpu-1'.
   $0 -l                       grabs the latest healthchecks from nodes marked as drain or down in slurm.
-  $0 --identify gpu-1 gpu-2   display details about 'gpu-1' and 'gpu-2' then quit.
+  $0 identify gpu-1 gpu-2   display details about 'gpu-1' and 'gpu-2' then quit.
 
 Notes:
   - nodenurse.sh gets compartment OCID from /opt/oci-hpc/conf/queues.conf.
@@ -50,13 +51,11 @@ Notes:
     whitelisted for unhealthy instance tagging.
 
   - nodenurse.sh deduplicates your provided hostlist.
-
-  - tagunhealthy.py must be present in same directory as nodenurse.sh for tagging to work.
 "
 
-HELP_BRIEF="usage: $0 [-c, --healthcheck] [-l, --latest] [-r, --reboot]
-                      [-i, --identify] [-t, --tagunhealthy] [-n, --nccl]
-		      [-s, --ncclscout] [-u, --update] [-h, --help] [-e, --exec]
+HELP_BRIEF="usage: $0 [-c, healthcheck] [-l, latest] [-r, reboot]
+                      [-i, identify] [-t, tag] [-n, nccl]
+		      [-s, ncclscout] [-u, update] [-h, help] [-e, exec]
                       [Arguments {HOST(S),HOSTFILE,--all,--idle,--drain,--down,
 	                          --alldown,--partition <name>}]"
 
@@ -65,126 +64,6 @@ if [ -z "$1" ]; then
     echo "$HELP_BRIEF"
     exit 1
 fi
-
-# Check first argument to grab function or exit if no valid option is provided
-if [[ $1 == "-c" ]] || [[ $1 == "--healthcheck" ]]; then
-    ntype=healthfresh
-    echo -e "\nFresh Healthcheck Mode..."
-
-elif [[ $1 == "-l" ]] || [[ $1 == "--latest" ]]; then
-    ntype=healthlatest
-    echo -e "\nLatest Healthcheck Mode..."
-
-elif [[ $1 == "-r" ]] || [[ $1 == "--reboot" ]]; then
-    ntype=rebootall
-    echo -e "\nReboot Mode..."
-
-elif [[ $1 == "-i" ]] || [[ $1 == "--identify" ]]; then
-    ntype=idnodes
-    echo -e "\nIdentify Mode..."
-
-elif [[ $1 == "-t" ]] || [[ $1 == "--tagunhealthy" ]]; then
-    ntype=tag
-    echo -e "\nTagging Mode..."
-
-elif [[ $1 == "-n" ]] || [[ $1 == "--nccl" ]]; then
-    ntype=nccl
-    echo -e "\nFull NCCL Mode..."
-
-elif [[ $1 == "-s" ]] || [[ $1 == "--ncclscout" ]]; then
-    ntype=ncclscout
-    echo -e "\nncclscout Mode..."
-
-elif [[ $1 == "-u" ]] || [[ $1 == "--update" ]]; then
-    ntype=update
-    echo -e "\nUpdate Mode..."
-
-elif [[ $1 == "-e" ]] || [[ $1 == "--exec" ]]; then
-    ntype=exec
-    echo -e "\nRemote exec Mode..."
-
-elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]]; then
-    echo "$HELP_MESSAGE"
-    exit 0
-
-else
-    echo "$HELP_BRIEF"
-    echo -e "\nUnknown option '$1' Please try again"
-    exit 1
-
-fi # End argument check
-
-# Host/hostfile Input
-# If a second argument is passed, assume its a nodename or a hostfile. If no second argument is passed grab the list of nodes in a down state in slurm
-if [ -f "$2" ]; then
-
-    # arg is a hostfile
-    echo -e "\nReading from provided hostfile...\n"
-    for i in $(cat "$2")
-    do
-      nodes+="$i "
-    done
-
-elif [ -z "$2" ]; then
-
-    # no argument provided so ask for a slurm status
-    echo -e "\nNo hosts provided.\n\nPlease provide hosts manually, or specify a slurm status (i.e. --idle, --down, --drain, --all)\n"
-
-elif [ $2 == "-a" ] || [ $2 == "--all" ]; then
-
-    # all flag is passed so grab all nodes from sinfo
-    echo -e "\nGrabbing all hosts from slurm...\n"
-    nodes=$(sinfo -h -o %n | sort -u | tr '\n' ' ')
-
-elif [ $2 == "-p" ] || [ $2 == "--partition" ]; then
-
-    # partition flag is passed so grab all nodes from specified partition
-    echo -e "\nGrabbing all hosts from $3 partition...\n"
-    nodes=$(sinfo -p "$3" -h -o %n | sort -u | tr '\n' ' ')
-
-elif [ $2 == "--down" ]; then
-
-    # down flag is passed so grab all nodes from sinfo
-    echo -e "\nGrabbing hosts from slurm marked as 'down'...\n"
-    nodes=$(sinfo -N | grep "down" | awk '{print $1}' | sort -u | tr '\n' ' ')
-
-elif [ $2 == "--drain" ]; then
-
-    # drain flag is passed so grab all nodes from sinfo
-    echo -e "\nGrabbing hosts from slurm marked as 'drain'...\n"
-    nodes=$(sinfo -N | grep "drain" | awk '{print $1}' | sort -u | tr '\n' ' ')
-
-elif [ $2 == "--alldown" ] || [ $2 == "-dd" ]; then
-
-    # down/drain flag is passed so grab all nodes from sinfo
-    echo -e "\nGrabbing hosts from slurm marked as 'down' and 'drain'...\n"
-    nodes=$(sinfo -N | grep -E "drain|down" | awk '{print $1}' | sort -u | tr '\n' ' ')
-
-elif [ $2 == "--idle" ]; then
-
-    # all flag is passed so grab all nodes from sinfo
-    echo -e "\nGrabbing hosts from slurm marked as 'idle'...\n"
-    nodes=$(sinfo -N | grep "idle" | awk '{print $1}' | sort -u | tr '\n' ' ')
-
-elif [ "${2:0:1}" == "-" ]; then
-
-    # arg is a mistyped flag so quit
-    echo -e "\nUnknown argument '$2'"
-    echo -e "\nPlease provide hosts manually, or specify a slurm status (i.e. --idle, --down, --drain, --all)"
-    exit 1
-
-else
-
-    # arg is/are manually entered hostname(s)
-    for arg in "${@:2}"; do
-      nodes+="$arg "
-    done
-    echo -e "\nHostname(s) provided manually...\n"
-
-fi # End Host/hostfile input
-
-# deduplicate nodelist
-nodes=$(echo $nodes | tr " " "\n" | sort -u | tr "\n" " " )
 
 # Initialize colors
 RED='\033[0;31m'
@@ -205,11 +84,16 @@ fi
 LOG_FILE=$date-nodenurse.log
 LOG_PATH="$LOGS_FOLDER/$LOG_FILE"
 
+# Create nccl_tests folder if it doesn't exist
+NCCL_FOLDER="nccl_tests"
+if [ ! -d "$NCCL_FOLDER" ]; then
+  mkdir -p "$NCCL_FOLDER"
+fi
+
 # Initialize global variables
 compartmentid=$(cat /opt/oci-hpc/conf/queues.conf | grep targetCompartment: | sort -u | awk '{print $2}')
 reboot=true
 goodtag=true
-numnodes=$(echo $nodes | wc -w) 
 allocstate=false
 parallel=false
 goodhealth=true
@@ -217,6 +101,225 @@ goodssh=true
 goodinst=true
 goodslurm=true
 goodstate=true
+
+# warn function
+warn(){
+
+    echo -e "${YELLOW}WARNING:${NC} $1\n"
+    echo -e "Continuing...\n"
+    exit 1
+}
+
+# error function
+error(){
+
+    if [ -n "$1" ]; then
+      echo -e "${RED}ERROR:${NC} $1\n"
+    fi
+    echo -e "Exiting...\n"
+    exit 1
+}
+
+# Check first argument to grab function or exit if no valid option is provided
+if [[ $1 == "-c" ]] || [[ $1 == "healthcheck" ]]; then
+    ntype=healthfresh
+    echo -e "\nFresh Healthcheck Mode...\n"
+
+elif [[ $1 == "-l" ]] || [[ $1 == "latest" ]]; then
+    ntype=healthlatest
+    echo -e "\nLatest Healthcheck Mode...\n"
+
+elif [[ $1 == "-r" ]] || [[ $1 == "reboot" ]]; then
+    ntype=rebootall
+    echo -e "\nReboot Mode...\n"
+
+elif [[ $1 == "-i" ]] || [[ $1 == "identify" ]]; then
+    ntype=idnodes
+    echo -e "\nIdentify Mode...\n"
+
+elif [[ $1 == "-t" ]] || [[ $1 == "tag" ]]; then
+    ntype=tag
+    echo -e "\nTagging Mode...\n"
+
+elif [[ $1 == "-n" ]] || [[ $1 == "nccl" ]]; then
+    ntype=nccl
+    echo -e "\nFull NCCL Mode...\n"
+
+elif [[ $1 == "-s" ]] || [[ $1 == "ncclscout" ]]; then
+    ntype=ncclscout
+    echo -e "\nncclscout Mode...\n"
+
+elif [[ $1 == "-u" ]] || [[ $1 == "update" ]]; then
+    ntype=update
+    echo -e "\nUpdate Mode...\n"
+
+elif [[ $1 == "-e" ]] || [[ $1 == "exec" ]]; then
+    ntype=exec
+    echo -e "\nRemote exec Mode...\n"
+
+elif [[ $1 == "-v" ]] || [[ $1 == "validate" ]]; then
+    ntype=validate
+    echo -e "\nValidate Mode...\n"
+
+elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]] || [[ $1 == "help" ]]; then
+    echo "$HELP_MESSAGE"
+    exit 0
+
+else
+    echo "$HELP_BRIEF"
+    echo -e "\nUnknown option '$1' Please try again\n"
+    exit 1
+
+fi # End option check
+
+
+# Host/hostfile Input
+# If a second argument is passed, assume its a nodename or a hostfile. If no second argument is passed check if a slurm state flag is passed 
+
+shift
+while [[ $# -gt 0 ]]; do
+
+    if [ -f "$1" ]; then
+
+      # arg is a hostfile
+      echo -e "\nReading from provided hostfile...\n"
+      for i in $(cat "$1")
+      do
+        nodes+="$i "
+      done
+      break
+    elif [ -z "$1" ]; then
+
+      # no argument provided so ask for a slurm status
+      echo -e "\nNo hosts provided.\n\nPlease provide hosts manually, or specify a slurm status (i.e. --idle, --down, --drain, --all)\n"
+      break
+    fi
+
+    case "$1" in 
+
+      -p|--partition)
+	if [[ $# -lt 2 ]] || [ "${2:0:1}" == "-" ]; then
+	  error "-p/--partition requires a specified partition. (i.e. '-p compute')"
+        fi
+        echo -e "Filtering hosts from the $2 partition...\n"
+        gatherpartition="-p $2"
+        shift 2
+        ;;
+
+      -a|--all)
+        if [ -z "$gatherstate" ]; then
+	  echo -e "Grabbing all hosts from slurm...\n"
+	  gatherstate="-t all"
+        else
+	  echo -e "--${gatherstate:3} already given, ignoring $1...\n"
+	  break
+	fi
+        shift
+        ;;
+
+      --down)
+        if [ -z "$gatherstate" ]; then
+          echo -e "Grabbing hosts from slurm marked as 'down'...\n"
+	  gatherstate="-t down"
+          shift
+        else
+	  echo -e "--${gatherstate:3} already given, ignoring $1...\n"
+	  break
+	fi
+        ;;
+
+      --drain)
+        if [ -z "$gatherstate" ]; then
+          echo -e "Grabbing hosts from slurm marked as 'drain'...\n"
+	  gatherstate="-t drain"
+	  shift
+        else
+	  echo -e "--${gatherstate:3} already given, ignoring $1...\n"
+	  break
+	fi
+	;;
+
+      -dd|--alldown)
+        if [ -z "$gatherstate" ]; then
+          echo -e "Grabbing hosts from slurm marked as 'down' and 'drain'...\n"
+	  gatherstate="-t drain,down"
+	  shift
+        else
+	  echo -e "--${gatherstate:3} already given, ignoring $1...\n"
+	  break
+	fi
+	;;
+
+      --idle)
+        if [ -z "$gatherstate" ]; then
+          echo -e "Grabbing hosts from slurm marked as 'idle'...\n"
+	  gatherstate="idle"
+	  shift
+        else
+	  echo -e "--${gatherstate:3} already given, ignoring $1...\n"
+	  break
+	fi
+	;;
+
+      --maint)
+        if [ -z "$gatherstate" ]; then
+          echo -e "Grabbing hosts from slurm marked as 'maint'...\n"
+	  gatherstate="-t maint"
+	  shift
+        else
+	  echo -e "--${gatherstate:3} already given, ignoring $1...\n"
+	  break
+	fi
+	;;
+
+      *)
+        if [ "${2:0:1}" == "-" ]; then
+          # arg is a mistyped flag so quit
+          echo -e "Unknown argument '$2'"
+          echo -e "Please provide hosts manually, or specify a slurm status (i.e. --idle, --down, --drain, --all)\n"
+          exit 1
+        else
+          # arg is/are manually entered hostname(s)
+          for arg in "${@:1}"; do
+            nodes+="$arg "
+          done
+          echo -e "Hostname(s) provided manually...\n"
+	  break
+	fi
+	shift
+        ;;
+
+  esac
+done
+
+# Process nodelist
+if [ -n "$gatherstate" ] && [[ $gatherstate == "idle" ]]; then
+    nodes=$(sinfo -N | grep "idle" | awk '{print $1}' | tr '\n' ' ')
+elif [ -n "$gatherstate" ]; then
+    nodes=$(sinfo $gatherpartition $gatherres $gatherstate -h -o %n)
+fi
+
+# deduplicate nodelist
+nodes=$(echo $nodes | tr " " "\n" | sort -u | tr "\n" " " )
+
+numnodes=$(echo $nodes | wc -w) 
+
+# Get reservation ID if exists 
+for i in $nodes; do
+    activeres+="$(sinfo -h -o "%n %i" | grep ubuntu | grep "$i " | awk '{print $2}') "
+done
+
+# depuplicate
+activeres=$(echo $activeres | tr " " "\n" | sort -u | tr "\n" " " )
+
+if [[ $(echo $activeres | wc -w) -gt 1 ]] && [[ $ntype == nccl ]]; then
+    error "Multiple reservations exist on these nodes, full nccl tests will fail"
+elif [[ $(echo $activeres | wc -w) -eq 1 ]]; then
+    reservation="--reservation="$activeres""
+else
+    reservation=""
+fi
+
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's instance name in the OCI console
 generate_instance_name() {
@@ -260,8 +363,7 @@ generate_serial() {
 nccl_scout() {
 
     if [ $numnodes = 1 ]; then
-      echo -e "\nMust have at least 2 nodes!"
-      exit 1
+      error "Must have at least 2 nodes!"
     fi
 
     for i in $nodes
@@ -269,10 +371,8 @@ nccl_scout() {
       echo $i >> $date-hostfile.tmp
     done
 
-    python3 ncclscout.py $date-hostfile.tmp
-    rm $date-hostfile.tmp
-    mv nccl_test.log nccl_tests/ncclscout_$date.log
-    mv nccl_run_allreduce.sh.log nccl_tests/ncclscout_allreduce_$date.log
+    python3 bin/ncclscout.py $date-hostfile.tmp
+    cleanup
     echo ""
 
 }
@@ -299,6 +399,7 @@ check_shape() {
 
     shapes=$(echo $shapes | awk -F '.' '{print $3}')
 
+    shapes="A100"
     # Check node shape and set the right sbatch script
     case "$shapes" in
     B4|A100) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce.sbatch";;
@@ -311,6 +412,24 @@ check_shape() {
     ;;
     *) echo -e "${RED}ERROR:${NC} Unsupported shape found. nccl testing only supports A100, H100 and H200"; exit 1 ;;
     esac
+
+}
+
+cleanup(){
+
+    find . -maxdepth 1 -name '*.tmp' -print0 | while IFS= read -r -d '' tmpfile
+    do
+      rm "$tmpfile"
+    done
+
+    find . -maxdepth 1 -name '*.log' -print0 | while IFS= read -r -d '' logfile
+    do
+      mv "$logfile" "logs"
+    done
+
+    find "." -maxdepth 1 -type d -regex '^.*[0-9].*' -print0 | while IFS= read -r -d '' dir; do
+      mv "$dir" "nccl_tests/"
+    done
 
 }
 
@@ -345,6 +464,7 @@ execute(){
       echo -e "Output from nodes: ${YELLOW}$nodes${NC}" | fold -s -w 65
       echo -e "----------------------------------------------------------------\n" 
       pdsh -S -R ssh -t 5 -w "$nodes" "$cmd"
+      return $?
       echo ""
     fi 
 
@@ -354,6 +474,7 @@ execute(){
 # Function displays the list of hosts along with relevant information, checking for nodes that can't be ssh'd or are in an allocated state in slurm
 display_nodes(){
 
+    cleanup
     goodstate=true
 
     echo "----------------------------------------------------------------"
@@ -511,7 +632,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
 
     # Offer to run ncclscout if number of node is greater then 1, healthchecks are good and ncclscout.py is present in the directory
-    if [ $numnodes -gt 1 ] && [ $goodhealth == true ] && [ -f "ncclscout.py" ];then
+    if [ $numnodes -gt 1 ] && [ $goodhealth == true ] && [ -f "bin/ncclscout.py" ];then
       echo "Would you like to run ncclscout on these $numnodes nodes? (yes/no)"
       read response
       echo " "
@@ -596,14 +717,14 @@ if [[ $ntype == tag ]]; then
     # Check if tag namespace is properly set up
     # if not then set them up properly
     echo -e "Checking if tags are properly set up..."
-    /usr/bin/python3 tagunhealthy.py --check
+    /usr/bin/python3 bin/tagunhealthy.py --check
     if [ $? -gt 0 ]; then
       echo -e "Want nodenurse to set up tagging? (yes/no)"
       read response
       case $response in
         yes|Yes|YES|y|Y)     
           echo -e "Setting up tags...\n"
-          /usr/bin/python3 tagunhealthy.py --setup
+          /usr/bin/python3 bin/tagunhealthy.py --setup
           if [ $? -gt 0 ];then 
             echo -e "${RED}Error setting up tagging!${NC}"
 	    exit 1
@@ -648,7 +769,7 @@ if [[ $ntype == tag ]]; then
 	  echo -e "OCID: $ocid\n" | tee -a $LOG_PATH
 
 	  # Send ocid through tagunhealth.py
-          /usr/bin/python3 tagunhealthy.py --instance-id $ocid >> $LOG_PATH || goodtag=false	
+          /usr/bin/python3 bin/tagunhealthy.py --instance-id $ocid >> $LOG_PATH || goodtag=false	
 
 	  # If the oci reboot cmd fails then inform user
 	  if [ $goodtag == false ];
@@ -706,8 +827,9 @@ if [[ $ntype == nccl ]]; then
 	  --job-name=nodenurse_nccl \
 	  --output=nccl_tests/nccl_job-%j.out \
 	  --error=nccl_tests/nccl_job-%j.err \
+	  $reservation\
 	  $script \
-	  | tee -a tmp_jobid
+	  | tee -a jobid.tmp
       done
 
       if [ $? -gt 0 ]; then
@@ -715,8 +837,8 @@ if [[ $ntype == nccl ]]; then
         exit 1
       fi
 	
-      jobids=`cat tmp_jobid| awk '{print $4}'`
-      rm tmp_jobid
+      jobids=`cat jobid.tmp| awk '{print $4}'`
+      cleanup
       echo ""
     
       echo -e "Waiting for jobs to finish.\n"
@@ -772,10 +894,8 @@ if [[ $ntype == nccl ]]; then
       done
 
       # clean up nccl script output
-      find "." -maxdepth 1 -type d -regex '^.*[0-9].*' -print0 | while IFS= read -r -d '' dir; do
-        mv "$dir" "nccl_tests/"
-      done
-	
+      cleanup
+
     else
       echo -e "\n${RED}ERROR:${NC}Invalid input. Please enter a positive integer.\n"
       exit 1
@@ -802,7 +922,8 @@ if [[ $ntype == update ]]; then
 2. Set node(s) to 'drain'
 3. Set node(s) to 'down'
 4. Create a 2 hour maintenance reservation on node(s)
-5. Quit
+5. Clear all reservations
+6. Quit
 
 ${YELLOW}Reminder${NC}: Putting nodes that are allocated into a down state will kill those jobs immediately.
           Drain is nicer and will wait for the running job to finish. 
@@ -888,7 +1009,13 @@ Current Reservations:"
         echo ""
         ;;
 
-      5) exit 0 ;;
+      5)
+	for i in $(sinfo -h -o %h)
+        do
+          sudo scontrol delete reservation="$i"
+	done
+	;;
+      6) exit 0 ;;
 
       *) echo -e "Invalid Input\n"; exit 1 ;;
 
@@ -938,6 +1065,58 @@ if [[ $ntype == exec ]]; then
     else
       execute $cmd
       exit 0
+    fi
+
+fi
+
+if [[ $ntype == validate ]]; then
+
+    badsshnodes=""
+    badsminodes=""
+    display_nodes
+
+    echo -e "Checking for ssh...\n"
+
+    execute -p hostname >> logs/validate-$date.log
+    if [ $? -gt 0 ]; then
+      for n in $nodes
+      do
+        ssh "$n" "hostname" >> logs/validate-$date.log || badsshnodes+="$n "
+      done
+    fi 
+
+    echo -e "Checking for nvidia-smi...\n"
+
+    execute -p nvidia-smi >> logs/validate-$date.log
+    if [ $? -gt 0 ]; then
+      for n in $nodes
+      do
+        ssh "$n" "nvidia-smi" >> logs/validate-$date.log || badsminodes+="$n "
+      done
+    fi 
+
+    if [ -n "$badsshnodes" ] || [ -n "$badsminodes" ]; then
+      echo -e "\nNodes that can't be ssh'd:"
+      echo -e "${RED}$badsshnodes${NC}" | tr " " "\n"
+      echo -e "Nodes that have nvidia-smi errors:"
+      echo -e "${RED}$badsminodes${NC}" | tr " " "\n"
+      exit 1
+    else
+      echo -e "Checking Gather Facts...\n"
+
+      for i in $nodes
+      do
+        echo $i >> $date-hostfile.tmp
+      done
+
+      timeout 35s ansible-playbook -i $(pwd)/$date-hostfile.tmp $(pwd)/bin/gather_facts.yml
+      if [ $? -gt 0 ]; then
+  	echo -e "${RED}ERROR:${NC} Ansible gather facts is still failing. resize.sh and other playbooks will fail"
+      else
+	echo -e "${GREEN}Success:${NC} Nodes are validated and ansible roles should work fine."
+	exit 0
+      fi 
+
     fi
 
 fi
