@@ -1086,12 +1086,8 @@ if [[ $ntype == validate ]]; then
         echo -e "\nNodes that have potential issues:"
         echo -e "${RED}`echo $retestnodes | tr " " "\n"`${NC}"
 
-
-
-
-
       else
-          echo -e "${GREEN}Success:${NC} Nodes are ansible validated and ansible roles should work fine."
+        echo -e "${GREEN}Success:${NC} Nodes are ansible validated and should work fine."
       fi
 
       cleanup
