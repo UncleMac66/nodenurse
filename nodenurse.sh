@@ -1046,6 +1046,8 @@ if [[ $ntype == validate ]]; then
     warn "Validate mode is not a robust healthcheck. 
          It should only be used to diagnose why ansible playbooks may be hanging/failing."
 
+    confirm || exit 0
+
     echo -e "\nChecking for nvidia-smi errors...\n"
     smiresults=`parallel-ssh -i -l ubuntu -H "$nodes" -t 5 "hostname;nvidia-smi | grep NVIDIA-SMI"`
 
