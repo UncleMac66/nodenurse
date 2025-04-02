@@ -41,8 +41,9 @@ Arguments:
 Examples:
   $0 -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
   $0 -r gpu-1                 sends a hard reboot signal to node 'gpu-1'.
-  $0 -l                       grabs the latest healthchecks from nodes marked as drain or down in slurm.
-  $0 identify gpu-1 gpu-2   display details about 'gpu-1' and 'gpu-2' then quit.
+  $0 -v --all                 validates all nodes
+  $0 latest --alldown         grabs the latest healthchecks from nodes marked as drain or down in slurm.
+  $0 identify gpu-1 gpu-2     display details about 'gpu-1' and 'gpu-2' then quit.
 
 Notes:
   - nodenurse.sh gets compartment OCID from /opt/oci-hpc/conf/queues.conf.
@@ -106,10 +107,7 @@ goodstate=true
 
 # warn function
 warn(){
-
     echo -e "${YELLOW}WARNING:${NC} $1\n"
-    echo -e "Continuing...\n"
-    exit 1
 }
 
 # error function
@@ -322,6 +320,35 @@ else
     reservation=""
 fi
 
+confirm(){
+
+    if [ -n "$1" ]; then
+      prompt="$1 (yes/no/quit)"
+    else
+      prompt="Continue? (yes/no/quit)"
+    fi
+
+    while true; do 
+      echo -e "$prompt"
+      read response
+      case $response in 
+        y|Y|yes|Yes|YES)
+          return 0
+	  break
+	  ;;
+        n|N|no|No|NO) 
+	  return 1
+	  break
+	  ;;
+        q|Q|quit|Quit|QUIT)
+	  exit 0
+	  ;;
+        *) 
+	  warn "Invalid input. Please enter yes or no."
+	  ;;
+      esac
+    done
+}
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's instance name in the OCI console
 generate_instance_name() {
@@ -335,7 +362,7 @@ generate_instance_name() {
 
 # Function takes in an instance name and returns it's OCID
 generate_ocid() {
-    outputocid=`oci compute instance list --compartment-id $compartmentid --display-name $1 --auth instance_principal | jq -r .data[0].id || echo -e "${RED}Error:${NC} Could not retrieve instance OCID"`
+    outputocid=`ssh $1 -o "ConnectTimeout=5" "curl -sH \"Authorization: Bearer Oracle\" -L http://169.254.169.254/opc/v2/instance/ | jq -r .id" || warn "Could not retrieve instance OCID"`
     echo $outputocid
 }
 
@@ -348,6 +375,37 @@ generate_slurm_state() {
       echo $outputstate
     fi
 }
+
+finddiff(){
+
+    list1=$1
+    list2=$2
+
+    # Convert the lists to arrays
+    arr1=($list1)
+    arr2=($list2)
+
+    # Find the difference between the arrays
+    diff_arr=()
+    for node in "${arr1[@]}"; do
+      if ! [[ " ${arr2[*]} " =~ " $node " ]]; then
+        diff_arr+=("$node")
+      fi
+    done
+    for node in "${arr2[@]}"; do
+      if ! [[ " ${arr1[*]} " =~ " $node " ]]; then
+        diff_arr+=("$node")
+      fi
+    done
+
+    # Join the difference array into a space-separated string
+    diff_str=$(IFS=' '; echo "${diff_arr[*]}")
+
+    # Print the difference
+    echo "$diff_str"
+}
+
+
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's shape
 generate_shape() {
@@ -457,7 +515,8 @@ execute(){
         echo -e "Output from node: ${YELLOW}$n${NC} -- Node $currentnumnodes/$numnodes"
         echo -e "----------------------------------------------------------------\n" 
         ssh -o "ConnectTimeout=5" "$n" "$cmd"
-        echo ""
+	returnval+=$?
+	echo ""
         let currentnumnodes++
       done
     else
@@ -465,10 +524,11 @@ execute(){
       echo -e "Output from nodes: ${YELLOW}$nodes${NC}" | fold -s -w 65
       echo -e "----------------------------------------------------------------\n" 
       pdsh -S -R ssh -t 5 -w "$nodes" "$cmd"
-      return $?
+      returnval=$?
       echo ""
     fi 
 
+    return $returnval
 
 }
 
@@ -490,9 +550,7 @@ display_nodes(){
     fi
 
     if [ `echo $nodes | wc -w` -eq 0 ];then
-      echo -e "${YELLOW}Warning:${NC} No hosts to list.\n"
-      echo "exiting..."
-      exit 0
+      error "No hosts to list."
     fi
 
     # Loop through each node and get its instance name and details
@@ -502,7 +560,7 @@ display_nodes(){
       # Gather details
       inst=`generate_instance_name $n`
       state=`generate_slurm_state $n`
-      
+
       # Node error checking
       case $state in
 	mix|alloc) allocstate=true;;
@@ -518,7 +576,7 @@ display_nodes(){
       if [[ $1 == "full" ]]; then
 
         serial=`generate_serial $n`
-	ocid=`generate_ocid $inst`
+	ocid=`generate_ocid $n`
 	shape=`generate_shape $n`
 
         if [[ $serial == "Error: SSH" ]]; then
@@ -554,20 +612,16 @@ display_nodes(){
 
     # if any nodes are in alloc state then warn user
     if [[ $allocstate == true ]]; then
-      echo -e "${RED}WARNING:${NC} There are hosts in an allocated state."
-      echo -e "Proceed with caution as rebooting nodes that are running jobs is ill-advised and can cause significant customer disruption\n"
+      warn "There are hosts in an allocated state.\n\nProceed with caution as some actions, like rebooting, can cause significant customer disruption"
     fi
 
     # If there is an ssh failure warn the user
     if [[ $goodssh == false ]]; then
-      echo -e "${RED}WARNING:${NC} There are hosts that are inaccessible via SSH"
-      echo -e "Healthchecks and ansible scripts will fail on these hosts.\n"
-    fi
+      error "There are hosts that are inaccessible via SSH"
 
     # If instance name is not in /etc/hosts
-    if [[ $goodinst == false ]] || [[ $goodslurm == false ]]; then
-      echo -e "${RED}WARNING:${NC} There are hosts that can't be found in /etc/hosts or in slurm."
-      echo -e "The host(s) may not exist, were mistyped, or were not correctly added to the cluster\n"
+    elif [[ $goodinst == false ]] || [[ $goodslurm == false ]]; then
+      error "There are hosts that can't be found in /etc/hosts or in slurm.\n\nThe host(s) may not exist, were mistyped, or were not correctly added to the cluster"
     fi
 
 }
@@ -589,23 +643,14 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
     # Prompt user for parallelism if running fresh healthcheck and number of nodes is greater than 2 otherwise just run sequentially
     if [[ $numnodes -gt 2 ]] && [[ $ntype == healthfresh ]]; then
-      echo "Do you want to run healthchecks in parallel? (yes/no/quit)"
-      read response
-      case $response in 
-        yes|YES|Yes|y|Y)
+      confirm "Do you want to run healthchecks in parallel?"
+      if [ $? -eq 0 ]; then
           parallel=true
-        ;;
-        no|NO|No|n|N)
+      else
           parallel=false
-        ;;
-        q|Q|quit|QUIT|Quit)
-         exit 0
-        ;;
-        *)
-        echo "Invalid input. Please enter yes or no."
-        exit 1
-        ;;
-      esac
+      fi
+    else
+      confirm || exit 0
     fi
 
     # If serial or --latest then iterate through nodes 1x1
@@ -628,29 +673,15 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
     if [ $goodhealth == "true" ]; then
       echo -e "${GREEN}Complete:${NC} Healthchecks gathered on $numnodes nodes\n"
     else
-      echo -e "${RED}WARNING:${NC} Healthcheck gathering on $numnodes nodes completed with errors\n"
+      warn "Healthcheck gathering on $numnodes nodes completed with errors"
     fi
 
 
     # Offer to run ncclscout if number of node is greater then 1, healthchecks are good and ncclscout.py is present in the directory
     if [ $numnodes -gt 1 ] && [ $goodhealth == true ] && [ -f "bin/ncclscout.py" ];then
-      echo "Would you like to run ncclscout on these $numnodes nodes? (yes/no)"
-      read response
-      echo " "
-      case $response in
-        yes|Yes|YES|y|Y)
-          echo -e "Proceeding...\n"
-	  check_shape
-	  nccl_scout
-       ;;
-        no|No|NO|n|N)
-      	exit 1
-        ;;
-        *)
-          echo "Invalid input. Please enter yes or no."
-	  exit 1
-        ;;
-      esac
+      confirm "Would you like to run ncclscout on these $numnodes nodes?" || exit 0
+      check_shape
+      nccl_scout
     fi
 
 fi
@@ -661,22 +692,16 @@ if [ $ntype == rebootall ]; then
     display_nodes
 
     # ask for confirmation before reboot
-    echo -e "Are you sure you want to hard reboot these nodes? (yes/no)"
-    read response
-    echo " " 
-    case $response in
-
-      yes|Yes|YES|y|Y)
-        echo -e "Proceeding...\n"
+    confirm "Are you sure you want to force reboot the node(s)?" || exit 0
 
 	# loop through list of nodes, output details, send reset signal via ocicli, output success/failure. All output is also sent to a log titled <date>-nodenurse.log
 	for n in $nodes
 	do
 
 	  # Generate and display info for each node
-	  echo "----------------------------------------------------------------" | tee -a $LOG_PATH
+	  echo -e "\n----------------------------------------------------------------" | tee -a $LOG_PATH
           inst=`generate_instance_name $n`
-          ocid=`generate_ocid $inst`
+          ocid=`generate_ocid $n`
 	  serial=`generate_serial $n`
           echo -e "Rebooting ${YELLOW}$n${NC}" | tee -a $LOG_PATH
 	  echo -e "Instance Name: $inst" | tee -a $LOG_PATH
@@ -696,17 +721,6 @@ if [ $ntype == rebootall ]; then
 	  echo -e "----------------------------------------------------------------\n" | tee -a $LOG_PATH
 
         done # End reboot loop
-        ;;
-
-      no|No|NO|n|N)
-        echo "Exiting..."
-        exit 1
-        ;;
-
-      *)
-        echo "Invalid input. Please enter yes or no."
-        ;;
-    esac
 fi
 
 # Main function for tagging hosts unhealthy
@@ -720,80 +734,44 @@ if [[ $ntype == tag ]]; then
     echo -e "Checking if tags are properly set up..."
     /usr/bin/python3 bin/tagunhealthy.py --check
     if [ $? -gt 0 ]; then
-      echo -e "Want nodenurse to set up tagging? (yes/no)"
-      read response
-      case $response in
-        yes|Yes|YES|y|Y)     
-          echo -e "Setting up tags...\n"
-          /usr/bin/python3 bin/tagunhealthy.py --setup
-          if [ $? -gt 0 ];then 
-            echo -e "${RED}Error setting up tagging!${NC}"
-	    exit 1
-	  fi
-          echo ""
-	  ;;
-        no|No|NO|n|N)
-	  echo -e "Exiting...\n"
-	  exit 0
-	  ;;
-	*)
-	  echo "Exiting..."
-          exit 1
-          ;;
-      esac
+      confirm "Want nodenurse to set up tagging?" || exit 0
+      echo -e "Setting up tags...\n"
+      /usr/bin/python3 bin/tagunhealthy.py --setup
+      if [ $? -gt 0 ];then 
+        error "Error setting up tagging!"
+      fi
+    echo ""
     fi
     
     # ask for confirmation before tagging
-    echo -e "Are you sure you want to mark these nodes as unhealthy? (yes/no)"
-    read response
-    echo " " 
-    case $response in
+    confirm "Are you sure you want to mark the node(s) as unhealthy?" || exit 0
 
-      yes|Yes|YES|y|Y)
-        echo -e "Proceeding...\n"
+    # loop through list of nodes, output details, send reset signal via ocicli, output success/failure. All output is also sent to a log titled <date>-nodenurse.log
+    for n in $nodes
+    do
+      # Generate and display info for each node
+      echo -e "\n----------------------------------------------------------------" | tee -a $LOG_PATH
+      inst=`generate_instance_name $n`
+      ocid=`generate_ocid $n`
+      serial=`generate_serial $n`
+      echo -e "Tagging ${YELLOW}$n${NC} as unhealthy" | tee -a $LOG_PATH
+      echo -e "Instance Name: $inst" | tee -a $LOG_PATH
+      echo -e "Serial Number: $serial" | tee -a $LOG_PATH
+      echo -e "OCID: $ocid\n" | tee -a $LOG_PATH
 
-	#### Check to see if tag exists in compartment
-	#### if not ask to create it
+      # Send ocid through tagunhealth.py
+      /usr/bin/python3 bin/tagunhealthy.py --instance-id $ocid >> $LOG_PATH || goodtag=false	
 
-	# loop through list of nodes, output details, send reset signal via ocicli, output success/failure. All output is also sent to a log titled <date>-nodenurse.log
-	for n in $nodes
-	do
+      # If the oci reboot cmd fails then inform user
+      if [ $goodtag == false ]; then
+        echo -e "${RED}Tagging failed on node $n! Full details in $LOG_PATH${NC}" | tee -a $LOG_PATH 
+      else 
+        echo -e "$(date -u '+%Y%m%d%H%M') - ${GREEN}Success${NC} - Node ${YELLOW}$n${NC} marked as unhealthy" | tee -a $LOG_PATH
+      fi
+      echo -e "----------------------------------------------------------------\n" | tee -a $LOG_PATH
 
-	  # Generate and display info for each node
-	  echo "----------------------------------------------------------------" | tee -a $LOG_PATH
-          inst=`generate_instance_name $n`
-          ocid=`generate_ocid $inst`
-	  serial=`generate_serial $n`
-          echo -e "Tagging ${YELLOW}$n${NC} as unhealthy" | tee -a $LOG_PATH
-	  echo -e "Instance Name: $inst" | tee -a $LOG_PATH
-	  echo -e "Serial Number: $serial" | tee -a $LOG_PATH
-	  echo -e "OCID: $ocid\n" | tee -a $LOG_PATH
+    done # End tagging loop
 
-	  # Send ocid through tagunhealth.py
-          /usr/bin/python3 bin/tagunhealthy.py --instance-id $ocid >> $LOG_PATH || goodtag=false	
-
-	  # If the oci reboot cmd fails then inform user
-	  if [ $goodtag == false ];
-	  then
-            echo -e "${RED}Tagging failed on node $n! Full details in $LOG_PATH${NC}" | tee -a $LOG_PATH 
-	  else 
-	    echo -e "$(date -u '+%Y%m%d%H%M') - ${GREEN}Success${NC} - Node ${YELLOW}$n${NC} marked as unhealthy" | tee -a $LOG_PATH
-	  fi
-	  echo -e "----------------------------------------------------------------\n" | tee -a $LOG_PATH
-
-        done # End tagging loop
-        ;;
-
-      no|No|NO|n|N)
-        echo "Exiting..."
-        exit 1
-        ;;
-
-      *)
-        echo "Invalid input. Please enter yes or no."
-        ;;
-    esac
-    
 fi
 
 # Main function for full nccl test on nodes
@@ -802,8 +780,7 @@ if [[ $ntype == nccl ]]; then
     display_nodes 
 
     if [[ $allocstate == true ]] || [[ $goodstate == false ]]; then
-      echo -e "\n${RED}ERROR:${NC} Some nodes are in an allocated or down state. Can't run NCCL test.\n"
-      exit 1
+     error "Some nodes are in an allocated or down state. Can't run NCCL test."
     fi
 
     check_shape
@@ -834,8 +811,7 @@ if [[ $ntype == nccl ]]; then
       done
 
       if [ $? -gt 0 ]; then
-        echo -e "\n${RED}ERROR:${NC}sbatch encountered a problem..\n"
-        exit 1
+        error "sbatch encountered a problem.."
       fi
 	
       jobids=`cat jobid.tmp| awk '{print $4}'`
@@ -869,7 +845,7 @@ if [[ $ntype == nccl ]]; then
 	    break
 	  fi
 	  if [[ $timetowait -gt 90 ]]; then
-	    echo -e "\n${YELLOW}WARNING:${NC} Timed out waiting for nccl Job $j.\n"
+	    warn "Timed out waiting for nccl Job $j."
 	    output=false
 	    break
 	  fi
@@ -888,7 +864,7 @@ if [[ $ntype == nccl ]]; then
           echo -e "\nFull error output stored at: nccl_tests/nccl_job-$j.err\n"
 	  goodjob=true
         else
-	  echo -e "${YELLOW}WARNING:${NC} No output to show. Check on this job manually with squeue.\n"
+	  warn "No output to show. Check on this job manually with squeue."
 	fi
 	let numtest++
 	timetowait=0
@@ -898,8 +874,7 @@ if [[ $ntype == nccl ]]; then
       cleanup
 
     else
-      echo -e "\n${RED}ERROR:${NC}Invalid input. Please enter a positive integer.\n"
-      exit 1
+      error "Invalid input. Please enter a positive integer."
     fi
 
 fi
@@ -972,8 +947,7 @@ Selection: "
       4) 
          sudo scontrol create reservation starttime=`date -u +'%FT%T'` flags=maint,ignore_jobs user=$USER duration=120 nodes="$nodes" && sleep 1 
          if [ $? -ne 0 ]; then
-           echo -e "\n${RED}ERROR:${NC}Couldn't create slurm reservation.\nExiting..."
-           exit 1
+           error "Couldn't create slurm reservation."
          fi
 	 
          for i in $nodes
@@ -1022,7 +996,7 @@ Current Reservations:"
 
     esac  
    
-    echo -e "\n"
+    echo ""
     sleep 2
     display_nodes
     exit 0
@@ -1033,91 +1007,94 @@ if [[ $ntype == exec ]]; then
 
     display_nodes
 
-    # Ask for cmd to run
+    parallel=true
 
-    echo -e "Please enter the command you'd like to run on these node(s).\n"
-    echo -ne "$ "
-    read cmd
-
-    # Ask if parallel
-    echo -e "\nDo you want to run this in parallel? (yes/no/quit)"
-    read response
-    case $response in 
-      yes|YES|Yes|y|Y)
-        parallel=true
-      ;;
-      no|NO|No|n|N)
-        parallel=false
-      ;;
-      q|Q|quit|QUIT|Quit)
-       exit 0
-      ;;
-      *)
-      echo "Invalid input. Please enter yes or no."
-      exit 1
-      ;;
-    esac
-
-    # Run commands
-
-    if [[ $parallel == true ]]; then
-      execute -p $cmd
-      exit 0
-    else
-      execute $cmd
-      exit 0
-    fi
+    while true; do
+      # Ask for cmd to run
+      echo -e "Please enter the command you'd like to run on these node(s)\n[ q: quit, s: sequential mode, p: parallel mode (default) ]\n"
+      if [[ $parallel == false ]]; then
+        echo -e "${GREEN}Sequential Mode${NC}"
+      else
+        echo -e "${GREEN}Parallel Mode${NC}"
+      fi
+      echo -ne "$ "
+      read cmd
+      echo ""
+      case "$cmd" in
+	q) exit 0;;
+	s) parallel=false;;
+	p) parallel=true;;
+	*)
+          # Run commands
+          if [[ $parallel == false ]]; then
+            execute $cmd
+          else
+            execute -p $cmd
+          fi
+	;;
+      esac
+    done
 
 fi
 
 if [[ $ntype == validate ]]; then
 
-    badsshnodes=""
-    badsminodes=""
+    badnodes=""
+    numtimes=0
     display_nodes
 
-    echo -e "Checking for ssh...\n"
+    warn "Validate mode is not a robust healthcheck. 
+         It should only be used to diagnose why ansible playbooks may be hanging/failing."
 
-    execute -p hostname >> logs/validate-$date.log
-    if [ $? -gt 0 ]; then
-      for n in $nodes
-      do
-        ssh "$n" "hostname" >> logs/validate-$date.log || badsshnodes+="$n "
-      done
-    fi 
+    echo -e "\nChecking for nvidia-smi errors...\n"
+    smiresults=`parallel-ssh -i -l ubuntu -H "$nodes" -t 5 "hostname;nvidia-smi | grep NVIDIA-SMI"`
+    if echo -e "$smiresults" | grep --color=always "FAILURE"; then
+    echo -e "\nThe following nodes have nvidia-smi issues:\n"
+    badnodes=$(echo -e "$smiresults" |grep "FAILURE" | awk '{print $4}')
+    echo -e "${RED}$badnodes${NC}"
+    echo "" 
+    fi
 
-    echo -e "Checking for nvidia-smi...\n"
-
-    execute -p nvidia-smi >> logs/validate-$date.log
-    if [ $? -gt 0 ]; then
-      for n in $nodes
-      do
-        ssh "$n" "nvidia-smi" >> logs/validate-$date.log || badsminodes+="$n "
-      done
-    fi 
-
-    if [ -n "$badsshnodes" ] || [ -n "$badsminodes" ]; then
-      echo -e "\nNodes that can't be ssh'd:"
-      echo -e "${RED}$badsshnodes${NC}" | tr " " "\n"
-      echo -e "Nodes that have nvidia-smi errors:"
-      echo -e "${RED}$badsminodes${NC}" | tr " " "\n"
-      exit 1
-    else
-      echo -e "Checking Gather Facts...\n"
+    echo -e "Checking Gather Facts...\n"
 
       for i in $nodes
       do
         echo $i >> $date-hostfile.tmp
       done
+      
 
-      timeout 35s ansible-playbook -i $(pwd)/$date-hostfile.tmp $(pwd)/bin/gather_facts.yml
-      if [ $? -gt 0 ]; then
-  	echo -e "${RED}ERROR:${NC} Ansible gather facts is still failing. resize.sh and other playbooks will fail"
+      timeout 32s ansible-playbook -T 3 -i $date-hostfile.tmp bin/gather_facts.yml | tee -a logs/$date-validate.log
+      gfresults=`cat logs/$date-validate.log | grep "ok:" | awk -F'[][]' '{print $2}'`
+
+      if ! [ $(echo "$gfresults" | wc -w) = $numnodes ]; then
+
+        warn "Ansible gather facts is failing, trying to find the offending node(s)..."
+        retestnodes=`finddiff "$nodes" "$gfresults"`
+        echo -e "\nNodes that are ok:"
+        echo -e "${GREEN}$gfresults${NC}"
+        echo -e "\nNodes that will be retested:"
+        echo -e "${YELLOW}`echo $retestnodes | tr " " "\n"`${NC}"
+	echo ""
+        rm $date-hostfile.tmp
+        for i in $retestnodes
+        do
+          echo $i >> $date-hostfile.tmp
+        done
+        timeout 32s ansible-playbook -T 3 -i $date-hostfile.tmp bin/gather_facts.yml | tee -a logs/$date-validate.log 
+        gfresults=`cat logs/$date-validate.log | grep "ok:" | awk -F'[][]' '{print $2}'`
+        retestnodes=`finddiff "$nodes" "$gfresults"`
+        echo -e "\nNodes that have potential issues:"
+        echo -e "${RED}`echo $retestnodes | tr " " "\n"`${NC}"
+
+
+
+
+
       else
-	echo -e "${GREEN}Success:${NC} Nodes are validated and ansible roles should work fine."
-	exit 0
-      fi 
+          echo -e "${GREEN}Success:${NC} Nodes are ansible validated and ansible roles should work fine."
+      fi
 
-    fi
+      cleanup
+      exit 0
 
 fi

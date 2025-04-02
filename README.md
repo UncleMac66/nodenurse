@@ -4,23 +4,24 @@ Helper tool to test, diagnose, reboot, and tag unhealthy nodes in a slurm based 
 
 
 ```
-Usage: ./nodenurse.sh [OPTION] [ARGUMENT]
+Usage: $0 [OPTION] [ARGUMENT]
 
 Description:
   nodenurse.sh takes supplied nodename(s), or a list of nodenames in a hostfile and can run a variety of functions
   on them which can be helpful when troubleshooting an OCI-HPC Slurm based cluster.
 
 Options:
-  -h, --help             Display this message and exit.
-  -c, --healthcheck      Run a fresh healthcheck on the node(s).
-  -l, --latest           Gather the latest healthcheck from the node(s).
-  -t, --tagunhealthy     Apply the unhealthy tag to the node(s)
-  -r, --reboot           Hard reboot the node(s).
-  -e, --exec             Execute command on the node(s)
-  -i, --identify         Display full details of the node(s) and exit.
-  -n, --nccl             Run allreduce nccl test on the node(s).
-  -s, --ncclscout        Run ncclscout (nccl pair test) on the node(s).
-  -u, --update           Update the slurm state on the node(s).
+  -h, help             Display this message and exit.
+  -c, healthcheck      Run a fresh healthcheck on the node(s).
+  -l, latest           Gather the latest healthcheck from the node(s).
+  -t, tag              Apply the unhealthy tag to the node(s)
+  -r, reboot           Hard reboot the node(s).
+  -e, exec             Execute command on the node(s)
+  -i, identify         Display full details of the node(s) and exit.
+  -n, nccl             Run allreduce nccl test on the node(s).
+  -s, ncclscout        Run ncclscout (nccl pair test) on the node(s).
+  -u, update           Update the slurm state on the node(s).
+  -v, validate         Run nodes through checks to ensure ansible scripts will work.
 
 Arguments:
   HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2).
@@ -35,14 +36,17 @@ Arguments:
 
   --alldown              Use hosts that are in a 'down' or 'drain' state in slurm.
 
+  --maint                Use hosts that are in a 'maint' state in slurm.
+
   --partition,-p <name>  Use all nodes in a specified slurm partition name (i.e. compute).
 
 
 Examples:
-  ./nodenurse.sh -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
-  ./nodenurse.sh -r gpu-1                 sends a hard reboot signal to node 'gpu-1'.
-  ./nodenurse.sh -l                       grabs the latest healthchecks from nodes marked as drain or down in slurm.
-  ./nodenurse.sh --identify gpu-1 gpu-2   display details about 'gpu-1' and 'gpu-2' then quit.
+  $0 -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
+  $0 -r gpu-1                 sends a hard reboot signal to node 'gpu-1'.
+  $0 -v --all                 validates all nodes
+  $0 latest --alldown         grabs the latest healthchecks from nodes marked as drain or down in slurm.
+  $0 identify gpu-1 gpu-2     display details about 'gpu-1' and 'gpu-2' then quit.
 
 Notes:
   - nodenurse.sh gets compartment OCID from /opt/oci-hpc/conf/queues.conf.
@@ -53,6 +57,4 @@ Notes:
     whitelisted for unhealthy instance tagging.
 
   - nodenurse.sh deduplicates your provided hostlist.
-
-  - tagunhealthy.py must be present in same directory as nodenurse.sh for tagging to work.
 ```
