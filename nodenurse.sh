@@ -1048,49 +1048,49 @@ if [[ $ntype == validate ]]; then
 
     echo -e "\nChecking for nvidia-smi errors...\n"
     smiresults=`parallel-ssh -i -l ubuntu -H "$nodes" -t 5 "hostname;nvidia-smi | grep NVIDIA-SMI"`
+
     if echo -e "$smiresults" | grep --color=always "FAILURE"; then
-    echo -e "\nThe following nodes have nvidia-smi issues:\n"
-    badnodes=$(echo -e "$smiresults" |grep "FAILURE" | awk '{print $4}')
-    echo -e "${RED}$badnodes${NC}"
-    echo "" 
+      echo -e "\nThe following nodes have nvidia-smi issues:\n"
+      badnodes=$(echo -e "$smiresults" |grep "FAILURE" | awk '{print $4}')
+      echo -e "${RED}$badnodes${NC}"
+      echo "" 
     fi
 
     echo -e "Checking Gather Facts...\n"
 
-      for i in $nodes
+    for i in $nodes
+    do
+      echo $i >> $date-hostfile.tmp
+    done
+
+    timeout 32s ansible-playbook -T 3 -i $date-hostfile.tmp bin/gather_facts.yml | tee logs/$date-validate.log
+    gfresults=`cat logs/$date-validate.log | grep "ok:" | awk -F'[][]' '{print $2}'`
+
+    if ! [ $(echo "$gfresults" | wc -w) = $numnodes ]; then
+
+      warn "Ansible gather facts is failing, trying to find the offending node(s)..."
+      retestnodes=`finddiff "$nodes" "$gfresults"`
+      echo -e "\nNodes that are ok:"
+      echo -e "${GREEN}$gfresults${NC}"
+      echo -e "\nNodes that will be retested:"
+      echo -e "${YELLOW}`echo $retestnodes | tr " " "\n"`${NC}"
+      echo ""
+      rm $date-hostfile.tmp
+      for i in $retestnodes
       do
         echo $i >> $date-hostfile.tmp
       done
-      
-
-      timeout 32s ansible-playbook -T 3 -i $date-hostfile.tmp bin/gather_facts.yml | tee -a logs/$date-validate.log
+      timeout 32s ansible-playbook -T 3 -i $date-hostfile.tmp bin/gather_facts.yml | tee -a logs/$date-validate.log 
       gfresults=`cat logs/$date-validate.log | grep "ok:" | awk -F'[][]' '{print $2}'`
+      retestnodes=`finddiff "$nodes" "$gfresults"`
+      echo -e "\nNodes that have potential issues:"
+      echo -e "${RED}`echo $retestnodes | tr " " "\n"`${NC}"
 
-      if ! [ $(echo "$gfresults" | wc -w) = $numnodes ]; then
+    else
+      echo -e "${GREEN}Success:${NC} Nodes are ansible validated and should work fine."
+    fi
 
-        warn "Ansible gather facts is failing, trying to find the offending node(s)..."
-        retestnodes=`finddiff "$nodes" "$gfresults"`
-        echo -e "\nNodes that are ok:"
-        echo -e "${GREEN}$gfresults${NC}"
-        echo -e "\nNodes that will be retested:"
-        echo -e "${YELLOW}`echo $retestnodes | tr " " "\n"`${NC}"
-	echo ""
-        rm $date-hostfile.tmp
-        for i in $retestnodes
-        do
-          echo $i >> $date-hostfile.tmp
-        done
-        timeout 32s ansible-playbook -T 3 -i $date-hostfile.tmp bin/gather_facts.yml | tee -a logs/$date-validate.log 
-        gfresults=`cat logs/$date-validate.log | grep "ok:" | awk -F'[][]' '{print $2}'`
-        retestnodes=`finddiff "$nodes" "$gfresults"`
-        echo -e "\nNodes that have potential issues:"
-        echo -e "${RED}`echo $retestnodes | tr " " "\n"`${NC}"
-
-      else
-        echo -e "${GREEN}Success:${NC} Nodes are ansible validated and should work fine."
-      fi
-
-      cleanup
-      exit 0
+    cleanup
+    exit 0
 
 fi
