@@ -4,7 +4,7 @@ Helper tool to test, diagnose, reboot, and tag unhealthy nodes in a slurm based 
 
 
 ```
-Usage: $0 [OPTION] [ARGUMENT]
+Usage: ./nodenurse.sh [OPTION] [ARGUMENT]
 
 Description:
   nodenurse.sh takes supplied nodename(s), or a list of nodenames in a hostfile and can run a variety of functions
@@ -42,11 +42,11 @@ Arguments:
 
 
 Examples:
-  $0 -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
-  $0 -r gpu-1                 sends a hard reboot signal to node 'gpu-1'.
-  $0 -v --all                 validates all nodes
-  $0 latest --alldown         grabs the latest healthchecks from nodes marked as drain or down in slurm.
-  $0 identify gpu-1 gpu-2     display details about 'gpu-1' and 'gpu-2' then quit.
+  ./nodenurse.sh -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
+  ./nodenurse.sh -r gpu-1                 sends a hard reboot signal to node 'gpu-1'.
+  ./nodenurse.sh -v --all                 validates all nodes
+  ./nodenurse.sh latest --alldown         grabs the latest healthchecks from nodes marked as drain or down in slurm.
+  ./nodenurse.sh identify gpu-1 gpu-2     display details about 'gpu-1' and 'gpu-2' then quit.
 
 Notes:
   - nodenurse.sh gets compartment OCID from /opt/oci-hpc/conf/queues.conf.
