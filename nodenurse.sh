@@ -1070,7 +1070,7 @@ if [[ $ntype == validate ]]; then
 
     if ! [ $(echo "$oknodes" | wc -w) = $numnodes ]; then
       
-      if [ -n $badsminodes ]; then
+      if [ -n "$badsminodes" ]; then
         retestnodes=`finddiff "$nodes" "$oknodes"`
 	retestnodes=`finddiff "$badsminodes" "$retestnodes"`
 	echo ""
@@ -1105,9 +1105,9 @@ if [[ $ntype == validate ]]; then
         retestnodes=`finddiff "$nodes" "$oknodes"`
       fi
 
-      echo -e "Nodes that are ok:"
+      echo -e "Nodes that are ok (`echo $oknodes | wc -w`):"
       echo -e "${GREEN}`echo $oknodes | tr "\n" " " | fold -s -w 65`${NC}"
-      echo -e "\nNodes that have potential issues:"
+      echo -e "\nNodes that have potential issues (`echo $retestnodes | wc -w`):"
       echo -e "${RED}`echo $retestnodes | tr " " "\n"`${NC}"
 
     else
