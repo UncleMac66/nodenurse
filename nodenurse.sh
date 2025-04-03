@@ -295,8 +295,8 @@ done
 # Process nodelist
 if [ -n "$gatherstate" ] && [[ $gatherstate == "idle" ]]; then
     nodes=$(sinfo -N | grep "idle" | awk '{print $1}' | tr '\n' ' ')
-elif [ -n "$gatherstate" ]; then
-    nodes=$(sinfo $gatherpartition $gatherres $gatherstate -h -o %n)
+elif [ -n "$gatherstate" ] || [ -n "$gatherpartition" ]; then
+    nodes=$(sinfo $gatherpartition $gatherstate -h -o %n)
 fi
 
 # deduplicate nodelist
