@@ -1106,7 +1106,7 @@ if [[ $ntype == validate ]]; then
       fi
 
       echo -e "Nodes that are ok:"
-      echo -e "${GREEN}$oknodes${NC}"
+      echo -e "${GREEN}`echo $oknodes | tr "\n" " " | fold -s -w 65`${NC}"
       echo -e "\nNodes that have potential issues:"
       echo -e "${RED}`echo $retestnodes | tr " " "\n"`${NC}"
 
