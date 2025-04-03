@@ -589,7 +589,7 @@ display_nodes(){
 
       else
 
-        printf "%-25s %-25s %-10s\n" "$n" "$inst" "$state"
+        printf "%-25s %-25s %-10s" "$n" "$inst" "$state"
         echo " "
 
       fi
@@ -597,7 +597,7 @@ display_nodes(){
     done
 
     # Display total num of nodes
-    echo -e "Total: $numnodes Distinct host(s)\n"
+    echo -e "\nTotal: $numnodes Distinct host(s)\n"
 
     # If down/drain nodes then display reasons
     if [ -n "$(sinfo -R -h)" ] && [ $goodstate == "false" ];then
@@ -1039,7 +1039,7 @@ fi
 
 if [[ $ntype == validate ]]; then
 
-    badnodes=""
+    badsminodes=""
     numtimes=0
     display_nodes
 
@@ -1053,8 +1053,8 @@ if [[ $ntype == validate ]]; then
 
     if echo -e "$smiresults" | grep --color=always "FAILURE"; then
       echo -e "\nThe following nodes have nvidia-smi issues:\n"
-      badnodes=$(echo -e "$smiresults" |grep "FAILURE" | awk '{print $4}')
-      echo -e "${RED}$badnodes${NC}"
+      badsminodes=$(echo -e "$smiresults" |grep "FAILURE" | awk '{print $4}')
+      echo -e "${RED}$badsminodes${NC}"
       echo "" 
     fi
 
@@ -1065,14 +1065,14 @@ if [[ $ntype == validate ]]; then
       echo $i >> $date-hostfile.tmp
     done
 
-    timeout 32s ansible-playbook -T 3 -i $date-hostfile.tmp bin/gather_facts.yml | tee logs/$date-validate.log
+    timeout 20s ansible-playbook -T 3 -i $date-hostfile.tmp bin/gather_facts.yml | tee logs/$date-validate.log
     gfresults=`cat logs/$date-validate.log | grep "ok:" | awk -F'[][]' '{print $2}'`
 
     if ! [ $(echo "$gfresults" | wc -w) = $numnodes ]; then
-
+      echo ""
       warn "Ansible gather facts is failing, trying to find the offending node(s)..."
       retestnodes=`finddiff "$nodes" "$gfresults"`
-      echo -e "\nNodes that are ok:"
+      echo -e "Nodes that are ok:"
       echo -e "${GREEN}$gfresults${NC}"
       echo -e "\nNodes that will be retested:"
       echo -e "${YELLOW}`echo $retestnodes | tr " " "\n"`${NC}"
@@ -1082,11 +1082,29 @@ if [[ $ntype == validate ]]; then
       do
         echo $i >> $date-hostfile.tmp
       done
-      timeout 32s ansible-playbook -T 3 -i $date-hostfile.tmp bin/gather_facts.yml | tee -a logs/$date-validate.log 
+      timeout 20s ansible-playbook -T 3 -i $date-hostfile.tmp bin/gather_facts.yml | tee -a logs/$date-validate.log 
       gfresults=`cat logs/$date-validate.log | grep "ok:" | awk -F'[][]' '{print $2}'`
       retestnodes=`finddiff "$nodes" "$gfresults"`
+      
+      if [ -n $badsminodes ]; then
+	echo ""
+        warn "Trying again but removing the following node(s) with nvidia-smi issues"
+        echo -e "${RED}$badsminodes${NC}"
+	retestnodes=$(finddiff "$badsminodes" "$retestnodes")
+        rm $date-hostfile.tmp
+        for i in $retestnodes
+        do
+          echo $i >> $date-hostfile.tmp
+        done
+	echo ""
+        timeout 20s ansible-playbook -T 3 -i $date-hostfile.tmp bin/gather_facts.yml | tee -a logs/$date-validate.log 
+        gfresults=`cat logs/$date-validate.log | grep "ok:" | awk -F'[][]' '{print $2}'`
+        retestnodes=`finddiff "$nodes" "$gfresults"`
+      fi
+
+      badnodes=`echo $badsminodes $retestnodes | tr " " "\n" | sort -u`
       echo -e "\nNodes that have potential issues:"
-      echo -e "${RED}`echo $retestnodes | tr " " "\n"`${NC}"
+      echo -e "${RED}`echo $badnodes | tr " " "\n"`${NC}"
 
     else
       echo -e "${GREEN}Success:${NC} Nodes are ansible validated and should work fine."
