@@ -57,7 +57,7 @@ Notes:
 "
 
 HELP_BRIEF="usage: $0 [-c, healthcheck] [-l, latest] [-r, reboot]
-                      [-i, identify] [-t, tag] [-n, nccl]
+                      [-i, identify] [-t, tag] [-n, nccl] [ -v, validate ]
 		      [-s, ncclscout] [-u, update] [-h, help] [-e, exec]
                       [Arguments {HOST(S),HOSTFILE,--all,--idle,--drain,--down,
 	                          --alldown,--partition <name>}]"
