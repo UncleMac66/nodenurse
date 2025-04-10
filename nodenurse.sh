@@ -258,7 +258,7 @@ while [[ $# -gt 0 ]]; do
       --idle)
         if [ -z "$gatherstate" ]; then
           echo -e "Grabbing hosts from slurm marked as 'idle'...\n"
-	  gatherstate="idle"
+	  gatherstate="-t idle"
 	  shift
         else
 	  echo -e "--${gatherstate:3} already given, ignoring $1...\n"
@@ -298,7 +298,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Process nodelist
-if [ -n "$gatherstate" ] && [[ $gatherstate == "idle" ]]; then
+if [ -n "$gatherstate" ] && [[ $gatherstate == "-t idle" ]]; then
     nodes=$(sinfo -N | grep "idle" | awk '{print $1}' | tr '\n' ' ')
 elif [ -n "$gatherstate" ] || [ -n "$gatherpartition" ]; then
     nodes=$(sinfo $gatherpartition $gatherstate -h -o %n)
