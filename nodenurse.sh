@@ -298,15 +298,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Process nodelist
-#if [ -n "$gatherstate" ] && [[ $gatherstate == "-t idle" ]]; then
-#    nodes=$(sinfo -N | grep "idle" | awk '{print $1}' | tr '\n' ' ')
-#elif [ -n "$gatherstate" ] || [ -n "$gatherpartition" ]; then
 nodes=$(sinfo $gatherpartition $gatherstate -h -o %n)
-#fi
 
 # deduplicate nodelist
 nodes=$(echo $nodes | tr " " "\n" | sort -u | tr "\n" " " )
 
+# get number of nodes
 numnodes=$(echo $nodes | wc -w) 
 
 # Get reservation ID if exists 
