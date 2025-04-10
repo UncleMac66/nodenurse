@@ -12,6 +12,7 @@ Options:
   -c, healthcheck      Run a fresh healthcheck on the node(s).
   -l, latest           Gather the latest healthcheck from the node(s).
   -t, tag              Apply the unhealthy tag to the node(s)
+  -st, setuptag        Setup tagging in tenancy
   -r, reboot           Hard reboot the node(s).
   -e, exec             Execute command on the node(s)
   -i, identify         Display full details of the node(s) and exit.
@@ -160,6 +161,10 @@ elif [[ $1 == "-e" ]] || [[ $1 == "exec" ]]; then
 elif [[ $1 == "-v" ]] || [[ $1 == "validate" ]]; then
     ntype=validate
     echo -e "\nValidate Mode...\n"
+
+elif [[ $1 == "-st" ]] || [[ $1 == "setuptag" ]]; then
+    ntype=setuptag
+    echo -e "\nSetup Tagging Mode...\n"
 
 elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]] || [[ $1 == "help" ]]; then
     echo "$HELP_MESSAGE"
@@ -723,12 +728,8 @@ if [ $ntype == rebootall ]; then
         done # End reboot loop
 fi
 
-# Main function for tagging hosts unhealthy
-if [[ $ntype == tag ]]; then
+if [[ $ntype == setuptag ]]; then
 
-    # Display node details
-    display_nodes
-    
     # Check if tag namespace is properly set up
     # if not then set them up properly
     echo -e "Checking if tags are properly set up..."
@@ -740,8 +741,15 @@ if [[ $ntype == tag ]]; then
       if [ $? -gt 0 ];then 
         error "Error setting up tagging!"
       fi
-    echo ""
     fi
+    echo ""
+    
+fi
+# Main function for tagging hosts unhealthy
+if [[ $ntype == tag ]]; then
+
+    # Display node details
+    display_nodes
     
     # ask for confirmation before tagging
     confirm "Are you sure you want to mark the node(s) as unhealthy?" || exit 0
@@ -1104,6 +1112,19 @@ if [[ $ntype == validate ]]; then
         oknodes=`cat logs/$date-validate.log | grep "ok:" | awk -F'[][]' '{print $2}'`
         retestnodes=`finddiff "$nodes" "$oknodes"`
       fi
+
+#      warn "Attempting fix..."
+#      for i in $retestnodes
+#      do
+#	badnvme=`ssh $i lspci | grep NVMe | grep "rev ff"`
+#	if "$badnvme"; then
+#          deviceids=`echo $badnvme | awk -F ':' '{print $1}'`
+#	  for i in $deviceids
+#	  do
+#            ssh $i "sudo -c \"echo 1 > /sys/bus/pci/devices/0000\:$i\:00.0/remove\""
+#          done
+#	fi
+#      done
 
       echo -e "Nodes that are ok (`echo $oknodes | wc -w`):"
       echo -e "${GREEN}`echo $oknodes | tr "\n" " " | fold -s -w 65`${NC}"
