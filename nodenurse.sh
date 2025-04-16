@@ -162,9 +162,13 @@ elif [[ $1 == "-v" ]] || [[ $1 == "validate" ]]; then
     ntype=validate
     echo -e "\nValidate Mode...\n"
 
-elif [[ $1 == "-st" ]] || [[ $1 == "setuptag" ]]; then
+elif [[ $1 == "setuptag" ]]; then
     ntype=setuptag
     echo -e "\nSetup Tagging Mode...\n"
+
+elif [[ $1 == "captop" ]]; then
+    ntype=captop
+    echo -e "\nCapacity Topology Mode...\n"
 
 elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]] || [[ $1 == "help" ]]; then
     echo "$HELP_MESSAGE"
@@ -180,7 +184,6 @@ fi # End option check
 
 # Host/hostfile Input
 # If a second argument is passed, assume its a nodename or a hostfile. If no second argument is passed check if a slurm state flag is passed 
-
 shift
 while [[ $# -gt 0 ]]; do
 
@@ -258,7 +261,7 @@ while [[ $# -gt 0 ]]; do
       --idle)
         if [ -z "$gatherstate" ]; then
           echo -e "Grabbing hosts from slurm marked as 'idle'...\n"
-	  gatherstate="-t idle"
+	  gatherstate="idle"
 	  shift
         else
 	  echo -e "--${gatherstate:3} already given, ignoring $1...\n"
@@ -298,7 +301,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Process nodelist
-nodes=$(sinfo $gatherpartition $gatherstate -h -o %n)
+if [[ -n $gatherpartition ]] || [[ -n $gatherstate ]]; then
+    if [[ $gatherstate = "idle" ]]; then
+      nodes=$(sinfo -N -h | grep idle | awk '{print $1}')
+    else
+      nodes=$(sinfo $gatherpartition $gatherstate -h -o %n)
+    fi
+fi
 
 # deduplicate nodelist
 nodes=$(echo $nodes | tr " " "\n" | sort -u | tr "\n" " " )
@@ -351,6 +360,7 @@ confirm(){
       esac
     done
 }
+
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's instance name in the OCI console
 generate_instance_name() {
@@ -534,6 +544,7 @@ execute(){
 
 }
 
+
 # Function displays the list of hosts along with relevant information, checking for nodes that can't be ssh'd or are in an allocated state in slurm
 display_nodes(){
 
@@ -617,13 +628,9 @@ display_nodes(){
       warn "There are hosts in an allocated state.\n\nProceed with caution as some actions, like rebooting, can cause significant customer disruption"
     fi
 
-    # If there is an ssh failure warn the user
-    if [[ $goodssh == false ]]; then
-      error "There are hosts that are inaccessible via SSH"
-
     # If instance name is not in /etc/hosts
-    elif [[ $goodinst == false ]] || [[ $goodslurm == false ]]; then
-      error "There are hosts that can't be found in /etc/hosts or in slurm.\n\nThe host(s) may not exist, were mistyped, or were not correctly added to the cluster"
+    if [[ $goodinst == false ]] || [[ $goodslurm == false ]] || [[ $goodssh == false ]]; then
+      warn "These are hosts that either can't be found in /etc/hosts or slurm.\nThe host(s) may not exist, were mistyped, or were not correctly added to the cluster"
     fi
 
 }
@@ -1115,11 +1122,11 @@ if [[ $ntype == validate ]]; then
 #      do
 #	badnvme=`ssh $i lspci | grep NVMe | grep "rev ff"`
 #	if "$badnvme"; then
-#          deviceids=`echo $badnvme | awk -F ':' '{print $1}'`
+#          deviceids=`ssh $i lspci | grep NVMe | grep "rev ff" | awk -F ':' '{print $1}'`
 #	  for i in $deviceids
 #	  do
 #            ssh $i "sudo -c \"echo 1 > /sys/bus/pci/devices/0000\:$i\:00.0/remove\""
-#          done
+#         done
 #	fi
 #      done
 
@@ -1135,4 +1142,9 @@ if [[ $ntype == validate ]]; then
     cleanup
     exit 0
 
+fi
+
+if [[ $ntype == captop ]]; then
+    display_nodes
+    cleanup
 fi
