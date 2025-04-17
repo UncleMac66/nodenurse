@@ -2,8 +2,8 @@
 
 # ------------------ CONFIGURATION ------------------
 ACTION=$1
-PARTITION="data"
-POOL_OCID="ocid1.instancepool.oc1.iad.aaaaaaaat4dajharrc3hv74zhgkic5lp3fcrvulukppg5werjvxgwjxkwqrq"   # Replace with actual instance pool OCID
+PARTITION="compute" # Replace with actual slurm partition
+POOL_OCID="ocid1.instancepool.oc1.iad.aaaaaaaa"  # Replace with actual instance pool OCID
 START_WAIT_TIME=60     # Adjust based on actual boot time
 # ---------------------------------------------------
 
