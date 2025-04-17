@@ -2,9 +2,9 @@
 
 # ------------------ CONFIGURATION ------------------
 ACTION=$1
-PARTITION="cpu"
-POOL_OCID="ocid1.instancepool.oc1.iad.aaaaaaaapnstgtuv3hxotphavknwlzpvxcyqueuuxkijgxwfazku3fqrrbvq"   # Replace with actual instance pool OCID
-START_WAIT_TIME=120     # Adjust based on actual boot time
+PARTITION="data"
+POOL_OCID="ocid1.instancepool.oc1.iad.aaaaaaaat4dajharrc3hv74zhgkic5lp3fcrvulukppg5werjvxgwjxkwqrq"   # Replace with actual instance pool OCID
+START_WAIT_TIME=60     # Adjust based on actual boot time
 # ---------------------------------------------------
 
 if [[ "$ACTION" != "start" && "$ACTION" != "stop" ]]; then
@@ -12,7 +12,7 @@ if [[ "$ACTION" != "start" && "$ACTION" != "stop" ]]; then
   exit 1
 fi
 
-echo "[INFO] Performing '$ACTION' operation on Slurm compute partition nodes..."
+echo "[INFO] Performing '$ACTION' operation on Slurm $PARTITION partition nodes..."
 
 # Handle stop operation
 if [[ "$ACTION" == "stop" ]]; then
@@ -21,10 +21,10 @@ if [[ "$ACTION" == "stop" ]]; then
 
 # Mark stopped nodes as drain in slurm
   echo "[INFO] Marking nodes in Slurm as DRAIN..."
-  sinfo -p $PARTITION -ho %n | xargs -I {} sudo scontrol update NodeName="{}" State=DRAIN Reason="Manually Paused to stop billing"
+  sinfo -p $PARTITION -ho %n | xargs -I {} sudo scontrol update NodeName="{}" State=DOWN Reason="Manually Paused to stop billing"
   sleep 5
 
-  echo "[INFO] Start operation complete. Nodes are now DRAINED."
+  echo "[INFO] Stop operation complete. Nodes are now DOWN."
 fi
 
 # Handle start operation
@@ -33,7 +33,7 @@ if [[ "$ACTION" == "start" ]]; then
   echo "[INFO] Starting $PARTITION instance pool..."
   oci compute-management instance-pool start --instance-pool-id "$POOL_OCID" --auth instance_principal
 
-  echo "[INFO] Waiting for instances to start (sleeping $START_WAIT_TIME seconds) ..."
+  echo "[INFO] Waiting for instances to start (sleeping $START_WAIT_TIME seconds)..."
   sleep $START_WAIT_TIME
 
 # Mark newly started nodes as idle in slurm
