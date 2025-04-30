@@ -374,7 +374,10 @@ generate_instance_name() {
 
 # Function takes in an instance name and returns it's OCID
 generate_ocid() {
-    outputocid=`ssh $1 -o "ConnectTimeout=5" "curl -sH \"Authorization: Bearer Oracle\" -L http://169.254.169.254/opc/v2/instance/ | jq -r .id" || warn "Could not retrieve instance OCID"`
+    outputocid=`ssh $1 -o "ConnectTimeout=5" "curl -sH \"Authorization: Bearer Oracle\" -L http://169.254.169.254/opc/v2/instance/ | jq -r .id"`
+    if [[ -z $outputocid ]]; then 
+	outputocid=$(oci compute instance list --compartment-id $compartmentid --display-name `generate_instance_name $1` --auth instance_principal | jq -r  .data[0].id)
+    fi
     echo $outputocid
 }
 
