@@ -26,7 +26,7 @@ if [[ "$ACTION" == "stop" ]] && [[ -z "$QTY" ]]; then
 
 # Mark stopped nodes as drain in slurm
   echo "[INFO] Marking nodes in Slurm as DRAIN..."
-  sinfo -p $PARTITION -ho %n | xargs -P 0 -I {} sudo scontrol update NodeName="{}" State=DOWN Reason="Manually Paused to stop billing"
+  sinfo -p $PARTITION -ho %n | xargs -I {} sudo scontrol update NodeName="{}" State=DOWN Reason="Manually Paused to stop billing"
   sleep 5
 
   echo "[INFO] Stop operation complete. Nodes are now DOWN."
@@ -50,7 +50,7 @@ if [[ "$ACTION" == "stop" ]] && [[ -n "$QTY" ]]; then
     ocid+=" $(oci compute instance list --compartment-id $COMPARTMENT_OCID --display-name $ociname --auth instance_principal | jq -r .data[0].id)"
   done
   echo "[INFO] Marking nodes as DOWN..."
-  echo $hosts | tr " " "\n" | xargs -P 0 -I {} sudo scontrol update NodeName="{}" State=DOWN Reason="Manually Paused to stop billing"
+  echo $hosts | tr " " "\n" | xargs -I {} sudo scontrol update NodeName="{}" State=DOWN Reason="Manually Paused to stop billing"
   echo "[INFO] Stopping nodes..."
   echo $ocid | tr " " "\n" | xargs -P 0 -I {} oci compute instance action --action STOP --instance-id {} --auth instance_principal
   echo "[INFO] Stop operation complete. `echo $hosts | wc -w` nodes are now DOWN..."
@@ -68,7 +68,7 @@ if [[ "$ACTION" == "start" ]] && [[ -z "$QTY" ]]; then
 
 # Mark newly started nodes as idle in slurm
   echo "[INFO] Marking nodes in Slurm as IDLE..."
-  sinfo -p $PARTITION -ho %n | xargs -P 0 -I {} sudo scontrol update NodeName="{}" State=RESUME
+  sinfo -p $PARTITION -ho %n | xargs -I {} sudo scontrol update NodeName="{}" State=RESUME
   sleep 5
   echo "[INFO] Start operation complete. Nodes are now IDLE..."
   exit 0
@@ -96,7 +96,7 @@ if [[ "$ACTION" == "start" ]] && [[ -n "$QTY" ]]; then
   echo "[INFO] Waiting for instances to start (sleeping $START_WAIT_TIME seconds)..."
   sleep $START_WAIT_TIME
   echo "[INFO] Marking nodes in Slurm as IDLE..."
-  echo $hosts | xargs -P 0 -I {} sudo scontrol update NodeName="{}" State=RESUME
+  echo $hosts | xargs -I {} sudo scontrol update NodeName="{}" State=RESUME
   echo "[INFO] Start operation complete. `echo $hosts | wc -w` nodes are now IDLE..."
   exit 0
 fi
