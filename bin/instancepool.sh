@@ -3,7 +3,7 @@
 # ------------------ CONFIGURATION ------------------
 ACTION=$1
 QTY=$2
-PARTITION="compute" # Replace with actual slurm partition
+PARTITION="cpu" # Replace with actual slurm partition
 POOL_OCID="ocid1.instancepool.oc1.iad.aaaaaaaa"  # Replace with actual instance pool OCID
 COMPARTMENT_OCID="ocid1.compartment.oc1..aaaaaaaa" # Replace with actual compartment OCID
 START_WAIT_TIME=60     # Adjust based on actual boot time
@@ -26,12 +26,14 @@ if [[ "$ACTION" == "stop" ]] && [[ -z "$QTY" ]]; then
 
 # Mark stopped nodes as drain in slurm
   echo "[INFO] Marking nodes in Slurm as DRAIN..."
-  sinfo -p $PARTITION -ho %n | xargs -I {} sudo scontrol update NodeName="{}" State=DOWN Reason="Manually Paused to stop billing"
+  sinfo -p $PARTITION -ho %n | xargs -P 0 -I {} sudo scontrol update NodeName="{}" State=DOWN Reason="Manually Paused to stop billing"
   sleep 5
 
   echo "[INFO] Stop operation complete. Nodes are now DOWN."
+  exit 0
 fi
 
+# Handle stop operation w/ qty specified
 if [[ "$ACTION" == "stop" ]] && [[ -n "$QTY" ]]; then 
   echo "[INFO] Performing '$ACTION' operation on $QTY Slurm $PARTITION partition nodes..."
   hosts=$(sinfo -h -o %n -t idle -p $PARTITION | head -n $QTY)
@@ -45,12 +47,12 @@ if [[ "$ACTION" == "stop" ]] && [[ -n "$QTY" ]]; then
   for i in $hosts
   do
     ociname=`cat /etc/hosts | grep "$i " | awk '{print $4}'`
-    ocid=$(oci compute instance list --compartment-id $COMPARTMENT_OCID --display-name $ociname --auth instance_principal | jq -r .data[0].id)
-    echo "[INFO] Stopping $i..."
-    oci compute instance action --action STOP --instance-id $ocid --auth instance_principal
-    echo "[INFO] Marking $i in Slurm as DOWN..."
-    sudo scontrol update NodeName="$i" State=DOWN Reason="Manually Paused to stop billing"
+    ocid+=" $(oci compute instance list --compartment-id $COMPARTMENT_OCID --display-name $ociname --auth instance_principal | jq -r .data[0].id)"
   done
+  echo "[INFO] Marking nodes as DOWN..."
+  echo $hosts | tr " " "\n" | xargs -P 0 -I {} sudo scontrol update NodeName="{}" State=DOWN Reason="Manually Paused to stop billing"
+  echo "[INFO] Stopping nodes..."
+  echo $ocid | tr " " "\n" | xargs -P 0 -I {} oci compute instance action --action STOP --instance-id {} --auth instance_principal
   echo "[INFO] Stop operation complete. `echo $hosts | wc -w` nodes are now DOWN..."
   exit 0
 fi
@@ -66,11 +68,13 @@ if [[ "$ACTION" == "start" ]] && [[ -z "$QTY" ]]; then
 
 # Mark newly started nodes as idle in slurm
   echo "[INFO] Marking nodes in Slurm as IDLE..."
-  sinfo -p $PARTITION -ho %n | xargs -I {} sudo scontrol update NodeName="{}" State=RESUME
+  sinfo -p $PARTITION -ho %n | xargs -P 0 -I {} sudo scontrol update NodeName="{}" State=RESUME
   sleep 5
   echo "[INFO] Start operation complete. Nodes are now IDLE..."
+  exit 0
 fi
 
+# Handle start operation w/ qty specified
 if [[ "$ACTION" == "start" ]] && [[ -n "$QTY" ]]; then 
   echo "[INFO] Performing '$ACTION' operation on $QTY Slurm $PARTITION partition nodes..."
   hosts=$(sinfo -h -o %n -t down -p $PARTITION | head -n $QTY)
@@ -83,13 +87,16 @@ if [[ "$ACTION" == "start" ]] && [[ -n "$QTY" ]]; then
   fi
   for i in $hosts
   do
-    ociname=`cat /etc/hosts | grep $i | awk '{print $4}'`
-    ocid=$(oci compute instance list --compartment-id $COMPARTMENT_OCID --display-name $ociname --auth instance_principal | jq -r .data[0].id)
-    echo "[INFO] Starting $i..."
-    oci compute instance action --action START --instance-id $ocid --auth instance_principal
-    echo "[INFO] Marking $i in Slurm as IDLE..."
-    sudo scontrol update NodeName="$i" State=RESUME
+    ociname=`cat /etc/hosts | grep "$i " | awk '{print $4}'`
+    ocid+=" $(oci compute instance list --compartment-id $COMPARTMENT_OCID --display-name $ociname --auth instance_principal | jq -r .data[0].id)"
   done
+    echo "[INFO] Starting nodes..."
+    echo $ocid | tr " " "\n" | xargs -P 0 -I {} oci compute instance action --action START --instance-id {} --auth instance_principal
+
+  echo "[INFO] Waiting for instances to start (sleeping $START_WAIT_TIME seconds)..."
+  sleep $START_WAIT_TIME
+  echo "[INFO] Marking nodes in Slurm as IDLE..."
+  echo $hosts | xargs -P 0 -I {} sudo scontrol update NodeName="{}" State=RESUME
   echo "[INFO] Start operation complete. `echo $hosts | wc -w` nodes are now IDLE..."
   exit 0
 fi
