@@ -1064,7 +1064,7 @@ if [[ $ntype == validate ]]; then
     confirm || exit 0
 
     echo -e "\nChecking for nvidia-smi errors...\n"
-    smiresults=`parallel-ssh -i -l ubuntu -H "$nodes" -t 5 "hostname;nvidia-smi | grep NVIDIA-SMI"`
+    smiresults=`parallel-ssh -i -l ubuntu -H "$nodes" -t 15 "hostname;nvidia-smi | grep NVIDIA-SMI"`
 
     if echo -e "$smiresults" | grep --color=always "FAILURE"; then
       echo -e "\nThe following nodes have nvidia-smi issues:\n"
