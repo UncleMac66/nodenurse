@@ -216,7 +216,7 @@ while [[ $# -gt 0 ]]; do
 
       -a|--all)
         if [ -z "$gatherstate" ]; then
-	  echo -e "Grabbing all hosts from slurm...\n"
+	  echo -e "Filtering all hosts from slurm...\n"
 	  gatherstate="-t all"
         else
 	  echo -e "--${gatherstate:3} already given, ignoring $1...\n"
@@ -227,7 +227,7 @@ while [[ $# -gt 0 ]]; do
 
       --down)
         if [ -z "$gatherstate" ]; then
-          echo -e "Grabbing hosts from slurm marked as 'down'...\n"
+          echo -e "Filtering hosts from slurm marked as 'down'...\n"
 	  gatherstate="-t down"
           shift
         else
@@ -238,7 +238,7 @@ while [[ $# -gt 0 ]]; do
 
       --drain)
         if [ -z "$gatherstate" ]; then
-          echo -e "Grabbing hosts from slurm marked as 'drain'...\n"
+          echo -e "Filtering hosts from slurm marked as 'drain'...\n"
 	  gatherstate="-t drain"
 	  shift
         else
@@ -249,7 +249,7 @@ while [[ $# -gt 0 ]]; do
 
       -dd|--alldown)
         if [ -z "$gatherstate" ]; then
-          echo -e "Grabbing hosts from slurm marked as 'down' and 'drain'...\n"
+          echo -e "Filtering hosts from slurm marked as 'down' and 'drain'...\n"
 	  gatherstate="-t drain,down"
 	  shift
         else
@@ -260,7 +260,7 @@ while [[ $# -gt 0 ]]; do
 
       --idle)
         if [ -z "$gatherstate" ]; then
-          echo -e "Grabbing hosts from slurm marked as 'idle'...\n"
+          echo -e "Filtering hosts from slurm marked as 'idle'...\n"
 	  gatherstate="idle"
 	  shift
         else
@@ -271,7 +271,7 @@ while [[ $# -gt 0 ]]; do
 
       --maint)
         if [ -z "$gatherstate" ]; then
-          echo -e "Grabbing hosts from slurm marked as 'maint'...\n"
+          echo -e "Filtering hosts from slurm marked as 'maint'...\n"
 	  gatherstate="-t maint"
 	  shift
         else
@@ -303,7 +303,7 @@ done
 # Process nodelist
 if [[ -n $gatherpartition ]] || [[ -n $gatherstate ]]; then
     if [[ $gatherstate = "idle" ]]; then
-      nodes=$(sinfo -N -h | grep idle | awk '{print $1}')
+      nodes=$(sinfo $gatherpartition -N -h | grep idle | awk '{print $1}')
     else
       nodes=$(sinfo $gatherpartition $gatherstate -h -o %n)
     fi
