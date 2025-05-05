@@ -476,7 +476,7 @@ check_shape() {
 
     # Check node shape and set the right sbatch script
     case "$shapes" in
-    B4|A100) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce.sbatch";;
+    B4|A100|A100-v2) script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce.sbatch";;
     H100|H200)
       if [ -f "/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sbatch" ]; then
         script="/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sbatch"
