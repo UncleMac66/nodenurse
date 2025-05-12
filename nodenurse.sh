@@ -20,6 +20,7 @@ Options:
   -s, ncclscout        Run ncclscout (nccl pair test) on the node(s).
   -u, update           Update the slurm state on the node(s).
   -v, validate         Run nodes through checks to ensure ansible scripts will work.
+  captop               Run a report on capacity topology if tenancy is enabled for it
 
 Arguments:
   HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2).
@@ -1148,6 +1149,11 @@ if [[ $ntype == validate ]]; then
 fi
 
 if [[ $ntype == captop ]]; then
-    display_nodes
+    captopid=$(oci compute capacity-topology list --compartment-id $compartmentid --auth instance_principal | jq -r .data.items[].id)
+    if [[ -z $captop ]]; then
+      error "Cannot find the capacity topology id, are you sure one is active in this compartment?"
+    fi
+    bin/runcaptopreport.py --capacity-id $captopid
     cleanup
+    exit 0
 fi

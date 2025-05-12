@@ -23,6 +23,7 @@ Options:
   -s, ncclscout        Run ncclscout (nccl pair test) on the node(s).
   -u, update           Update the slurm state on the node(s).
   -v, validate         Run nodes through checks to ensure ansible scripts will work.
+  captop               Run a report on capacity topology if tenancy is enabled for it
 
 Arguments:
   HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2).
