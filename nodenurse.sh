@@ -1149,8 +1149,8 @@ if [[ $ntype == validate ]]; then
 fi
 
 if [[ $ntype == captop ]]; then
-    captopid=$(oci compute capacity-topology list --compartment-id $compartmentid --auth instance_principal | jq -r .data.items[].id)
-    if [[ -z $captop ]]; then
+    captopid=$(oci compute capacity-topology list --compartment-id "$compartmentid" --auth instance_principal | jq -r .data.items[].id)
+    if [[ -z $captopid ]]; then
       error "Cannot find the capacity topology id, are you sure one is active in this compartment?"
     fi
     bin/runcaptopreport.py --capacity-id $captopid
