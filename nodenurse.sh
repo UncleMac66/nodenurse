@@ -1138,7 +1138,8 @@ if [[ $ntype == validate ]]; then
       echo -e "${GREEN}`echo $oknodes | tr "\n" " " | fold -s -w 65`${NC}"
       echo -e "\nNodes that have potential issues (`echo $retestnodes | wc -w`):"
       echo -e "${RED}`echo $retestnodes | tr " " "\n"`${NC}"
-
+      echo $retestnodes | tr " " "\n" > hostfiles/$date-validate-badnodes
+      echo -e "\nHostlist of trouble nodes saved at hostfiles/$date-validate-badnodes..."
     else
       echo -e "${GREEN}Success:${NC} Nodes are ansible validated and should work fine."
     fi
