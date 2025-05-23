@@ -15,7 +15,7 @@ Options:
   -c, healthcheck      Run a fresh healthcheck on the node(s).
   -l, latest           Gather the latest healthcheck from the node(s).
   -t, tag              Apply the unhealthy tag to the node(s)
-  -st, setuptag        Setup tagging in tenancy
+  setuptag             Setup tagging in tenancy
   -r, reboot           Hard reboot the node(s).
   -e, exec             Execute command on the node(s)
   -i, identify         Display full details of the node(s) and exit.

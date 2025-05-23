@@ -12,7 +12,7 @@ Options:
   -c, healthcheck      Run a fresh healthcheck on the node(s).
   -l, latest           Gather the latest healthcheck from the node(s).
   -t, tag              Apply the unhealthy tag to the node(s)
-  -st, setuptag        Setup tagging in tenancy
+  setuptag             Setup tagging in tenancy
   -r, reboot           Hard reboot the node(s).
   -e, exec             Execute command on the node(s)
   -i, identify         Display full details of the node(s) and exit.
@@ -60,9 +60,14 @@ Notes:
 
 HELP_BRIEF="usage: $0 [-c, healthcheck] [-l, latest] [-r, reboot]
                       [-i, identify] [-t, tag] [-n, nccl] [ -v, validate ]
-		      [-s, ncclscout] [-u, update] [-h, help] [-e, exec]
-                      [Arguments {HOST(S),HOSTFILE,--all,--idle,--drain,--down,
-	                          --alldown,--partition <name>}]"
+		      [-s, ncclscout] [-u, update] [-e, exec]
+		      [captop] [setuptags] [-h, --help, help] 
+
+                      Arguments: {HOST(S),HOSTFILE,--all,--idle,--drain,--down,
+	                          --alldown,--partition <name>}
+
+examples: ./nodenurse.sh healthcheck gpu-123
+          ./nodenurse.sh reboot --idle" 
 
 # Check if an argument is passed
 if [ -z "$1" ]; then
