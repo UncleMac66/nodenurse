@@ -19,10 +19,6 @@ config = {'region': region, 'tenancy': signer.tenancy_id}
 
 # Initialize the OCI ComputeClient
 compute_client = oci.core.ComputeClient(config, signer=signer)
-#compute_composite = oci.core.ComputeClientCompositeOperations(compute_client)
-#compute_management = oci.core.ComputeManagementClient(config, signer=signer)
-#compute_management_composite = oci.core.ComputeManagementClientCompositeOperations(compute_management)
-
 instance_ocid = args.instance_id
 
 # Initialize the OCI IdentityClient
