@@ -27,16 +27,13 @@ try:
                 status="RUNNING"
         if status == "DEGRADED":
             if not node.instance_id is None:
-                status="RUNNING_DEGRADED"
+                status="RUNNING"
             else:
-                status="UNAVAILABLE_DEGRADED"
+                status="UNAVAILABLE"
         if status in state_counts.keys():
             state_counts[status]+=1
         else:
             state_counts[status]=1
-        if status == "RUNNING_DEGRADED":
-            instance=computeClient.get_instance(node.instance_id)
-            degraded_nodes.append({"ocid":node.instance_id,"name":instance.data.display_name})
     print("State :: "+str(state_counts)+"\n")
     print("Total ::", count)
 
