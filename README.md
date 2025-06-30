@@ -2,6 +2,15 @@
 
 Helper tool to test, diagnose, reboot, and tag unhealthy nodes in a slurm based GPU cluster. Specifically designed to work out of the box with GPU environments set up with [oci-hpc](https://github.com/oracle-quickstart/oci-hpc)
 
+### Installation
+
+```
+cd ~
+git clone https://github.com/UncleMac66/nodenurse.git
+cd ~/nodenurse
+
+# Always run nodenurse.sh cmds from the nodenurse directory 
+```
 
 ```
 Usage: ./nodenurse.sh [OPTION] [ARGUMENT]
@@ -26,7 +35,7 @@ Options:
   captop               Run a report on capacity topology if tenancy is enabled for it
 
 Arguments:
-  HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2).
+  HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2) or slurm notation like gpu-[1,2,5-6].
 
   --all,-a               Use all hosts that are listed in slurm.
 
@@ -48,7 +57,7 @@ Examples:
   ./nodenurse.sh -r gpu-1                 sends a hard reboot signal to node 'gpu-1'.
   ./nodenurse.sh -v --all                 validates all nodes
   ./nodenurse.sh latest --alldown         grabs the latest healthchecks from nodes marked as drain or down in slurm.
-  ./nodenurse.sh identify gpu-1 gpu-2     display details about 'gpu-1' and 'gpu-2' then quit.
+  ./nodenurse.sh identify gpu-[1-2]     display details about 'gpu-1' and 'gpu-2' then quit.
 
 Notes:
   - nodenurse.sh gets compartment OCID from /opt/oci-hpc/conf/queues.conf.

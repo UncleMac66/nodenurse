@@ -112,6 +112,46 @@ goodinst=true
 goodslurm=true
 goodstate=true
 
+# Helper function for expandhostnames
+expand_range() {
+    local range="$1"
+    local start=$(echo "$range" | cut -d'-' -f1)
+    local end=$(echo "$range" | cut -d'-' -f2)
+    if [[ "$start" =~ ^[0-9]+$ && "$end" =~ ^[0-9]+$ ]]; then
+        seq "$start" "$end"
+    else
+        echo "Error: Invalid range format in $range" >&2
+        exit 1
+    fi
+}
+
+# expand hostnames in slurm format
+expandhostnames() {
+    # arg is in slurm format
+    prefix=$(echo "$1" | cut -d'[' -f1)
+    numbers=$(echo "$1" | cut -d'[' -f2 | cut -d']' -f1)
+
+    # Split numbers by comma and process each part
+    IFS=',' read -ra num_parts <<< "$numbers"
+    hostnames=()
+
+    for part in "${num_parts[@]}"; do
+      # Remove any whitespace
+      part=$(echo "$part" | tr -d ' ')
+      if [[ "$part" =~ ^[0-9]+-[0-9]+$ ]]; then
+        # If it's a range (e.g., 1-3), expand it
+        while IFS= read -r num; do
+          hostnames+=("$prefix$num")
+          done < <(expand_range "$part")
+      elif [[ "$part" =~ ^[0-9]+$ ]]; then
+        # If it's a single number (e.g., 5), add it directly
+        hostnames+=("$prefix$part")
+      fi
+    done
+    # Print the expanded hostnames
+    echo "${hostnames[@]}"
+}
+
 # warn function
 warn(){
     echo -e "${YELLOW}WARNING:${NC} $1\n"
@@ -292,6 +332,9 @@ while [[ $# -gt 0 ]]; do
           echo -e "Unknown argument '$2'"
           echo -e "Please provide hosts manually, or specify a slurm status (i.e. --idle, --down, --drain, --all)\n"
           exit 1
+        elif [[ "$1" =~ \[.*\] ]]; then
+          # nodes are in slurm format
+	  nodes=$(expandhostnames $1)
         else
           # arg is/are manually entered hostname(s)
           for arg in "${@:1}"; do
