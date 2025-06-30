@@ -12,6 +12,8 @@ cd ~/nodenurse
 # Always run nodenurse.sh cmds from the nodenurse directory 
 ```
 
+### Help Page and Examples
+
 ```
 Usage: ./nodenurse.sh [OPTION] [ARGUMENT]
 
@@ -56,6 +58,7 @@ Examples:
   ./nodenurse.sh -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
   ./nodenurse.sh -r gpu-1                 sends a hard reboot signal to node 'gpu-1'.
   ./nodenurse.sh -v --all                 validates all nodes
+  ./nodenurse.sh -e -p compute            starts a remote execution prompt using all nodes in the 'compute' slurm partition
   ./nodenurse.sh latest --alldown         grabs the latest healthchecks from nodes marked as drain or down in slurm.
   ./nodenurse.sh identify gpu-[1-2]     display details about 'gpu-1' and 'gpu-2' then quit.
 
