@@ -60,7 +60,7 @@ Examples:
   ./nodenurse.sh -v --all                 validates all nodes
   ./nodenurse.sh -e -p compute            starts a remote execution prompt using all nodes in the 'compute' slurm partition
   ./nodenurse.sh latest --alldown         grabs the latest healthchecks from nodes marked as drain or down in slurm.
-  ./nodenurse.sh identify gpu-[1-2]     display details about 'gpu-1' and 'gpu-2' then quit.
+  ./nodenurse.sh identify gpu-[1-2]       display details about 'gpu-1' and 'gpu-2' then quit.
 
 Notes:
   - nodenurse.sh gets compartment OCID from /opt/oci-hpc/conf/queues.conf.

@@ -23,7 +23,7 @@ Options:
   captop               Run a report on capacity topology if tenancy is enabled for it
 
 Arguments:
-  HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2).
+HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2) or slurm notation like gpu-[1,2,5-6].
 
   --all,-a               Use all hosts that are listed in slurm.
 
@@ -44,6 +44,7 @@ Examples:
   $0 -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
   $0 -r gpu-1                 sends a hard reboot signal to node 'gpu-1'.
   $0 -v --all                 validates all nodes
+  $0 -e -p compute            starts a remote execution prompt using all nodes in the 'compute' slurm partition
   $0 latest --alldown         grabs the latest healthchecks from nodes marked as drain or down in slurm.
   $0 identify gpu-1 gpu-2     display details about 'gpu-1' and 'gpu-2' then quit.
 
