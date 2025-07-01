@@ -25,13 +25,13 @@ try:
         state=node.lifecycle_state
         count+=1
         if status == "AVAILABLE" :
-            if node.lifecycle_state is "ACTIVE":
+            if node.lifecycle_state == "ACTIVE":
                 status="RUNNING"
             else:
                 status="AVAILABLE"
 
         if status == "DEGRADED":
-            if node.lifecycle_state is "ACTIVE":
+            if node.lifecycle_state == "ACTIVE":
                 status="RUNNING"
             else:
                 status="UNAVAILABLE"
