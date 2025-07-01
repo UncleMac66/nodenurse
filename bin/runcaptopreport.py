@@ -22,7 +22,6 @@ try:
     state_counts={}
     for node in response.data:
         status=node.lifecycle_details
-        state=node.lifecycle_state
         count+=1
         if status == "AVAILABLE" :
             if node.lifecycle_state == "ACTIVE":
@@ -34,7 +33,7 @@ try:
             if node.lifecycle_state == "ACTIVE":
                 status="RUNNING"
             else:
-                status="UNAVAILABLE"
+                status="UNAVAILABLE/IN REPAIR"
         if status in state_counts.keys():
             state_counts[status]+=1
         else:
