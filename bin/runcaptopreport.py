@@ -22,15 +22,16 @@ try:
     state_counts={}
     for node in response.data:
         status=node.lifecycle_details
+        state=node.lifecycle_state
         count+=1
         if status == "AVAILABLE" :
-            if not node.instance_id is None:
+            if node.lifecycle_state is "ACTIVE":
                 status="RUNNING"
             else:
                 status="AVAILABLE"
 
         if status == "DEGRADED":
-            if not node.instance_id is None:
+            if node.lifecycle_state is "ACTIVE":
                 status="RUNNING"
             else:
                 status="UNAVAILABLE"
