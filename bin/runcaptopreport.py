@@ -33,7 +33,7 @@ try:
             if node.lifecycle_state == "ACTIVE":
                 status="RUNNING"
             else:
-                status="UNAVAILABLE/IN REPAIR"
+                status="UNAVAILABLE"
         if status in state_counts.keys():
             state_counts[status]+=1
         else:
