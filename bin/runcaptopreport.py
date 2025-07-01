@@ -23,8 +23,12 @@ try:
     for node in response.data:
         status=node.lifecycle_details
         count+=1
-        if status == "AVAILABLE" and not node.instance_id is None:
+        if status == "AVAILABLE" :
+            if not node.instance_id is None:
                 status="RUNNING"
+            else:
+                status="AVAILABLE"
+
         if status == "DEGRADED":
             if not node.instance_id is None:
                 status="RUNNING"
