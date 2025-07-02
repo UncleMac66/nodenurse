@@ -265,11 +265,11 @@ while [[ $# -gt 0 ]]; do
         if [ -z "$gatherstate" ]; then
 	  echo -e "Filtering all hosts from slurm...\n"
 	  gatherstate="-t all"
+          shift
         else
 	  echo -e "--${gatherstate:3} already given, ignoring $1...\n"
 	  break
 	fi
-        shift
         ;;
 
       --down)
