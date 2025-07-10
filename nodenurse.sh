@@ -87,6 +87,7 @@ date=`date -u '+%Y%m%d%H%M'`
 start_timestamp=`date -u +'%F %T'`
 
 # Initialize folders/files
+cd "$(dirname "$0")"
 # Create logs folder if it doesn't exist
 LOGS_FOLDER="logs"
 if [ ! -d "$LOGS_FOLDER" ]; then
