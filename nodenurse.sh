@@ -1162,9 +1162,54 @@ fi
 if [[ $ntype == captop ]]; then
     captopid=$(oci compute capacity-topology list --compartment-id "$compartmentid" --auth instance_principal 2> /dev/null | jq -r .data.items[].id 2> /dev/null)
     if [[ -z $captopid ]]; then
-      error "Cannot find the capacity topology id, are you sure one is active in this compartment?\n       Try manually running bin/runcaptopreport.py --capacity-id <id>"
+   #   error "Cannot find the capacity topology id, are you sure one is active in this compartment?\n       Try manually running bin/runcaptopreport.py --capacity-id <id>"
+   echo -e "\n"
     fi
-    bin/runcaptopreport.py --capacity-id $captopid
+    #captop_result=$(bin/runcaptopreport.py --capacity-id $captopid)
+    captop_result="
+07/11/2025 16:54:04
+----------------------
+     Block Status
+----------------------
+State :: {'RUNNING': 126, 'AVAILABLE': 1, 'IN_REPAIR': 1}
+
+Total :: 128 BM.GPU.H100.8
+"
+
+    echo "$captop_result" 
+    available_val=$(echo "$captop_result" | grep "State ::" | sed -n "s/.*'AVAILABLE': \([0-9]\+\).*/\1/p")
+
+
+    if [ -n $available_val ]; then
+	    echo -e "\nThere's $available_val node(s) available to spin up\n"
+	    confirm "Would you like to add the node(s) now? Please be careful, this is experimental and has the potential to put cluster in a bad state, be sure in what you are doing." || exit 0
+	    echo -ne "Cluster Name? (leave blank for the default cluster): "
+	    read cluster_name
+	    if [ -n "$cluster_name" ]; then
+	      cluster="--cluster_name $cluster_name"
+            else
+	      cluster="--cluster_name $(awk '/cluster_name/ {print $NF}' /etc/ansible/hosts)"
+	    fi
+	    
+	    SESSION="nodenurse_addnode"
+
+            tmux has-session -t $SESSION 2>/dev/null
+            if [ $? != 0 ]; then
+              # Create session and run resize.sh with message and timed shutdown when done
+
+              tmux new-session -d -s $SESSION "echo \"/opt/oci-hpc/bin/resize.sh add $available_val $cluster\"; echo \"resize.sh has started! DO NOT CTL-C OR KILL THIS TMUX PANE/SESSION\"; /opt/oci-hpc/bin/resize.sh add $available_val $cluster; echo \"resize.sh completed. Session will close in 10 seconds...\"; sleep 12; tmux kill-session -t $SESSION"
+  
+              # Second pane, runs log tailing
+
+	      tmux split-window -v -t "$SESSION" \
+              "echo RESIZE LOG OUTPUT:; find /opt/oci-hpc/logs/ -type f -name 'resize_$cluster_name*' | head -n1; tail -f \$(find /opt/oci-hpc/logs/ -type f -name 'resize_$cluster_name*' | head -n1)"
+  
+	      tmux attach -t $SESSION
+            else
+	      error "There's already a nodenurse tmux session running. Please ensure that a session named '$SESSION' isn't currently active and retry"
+            fi
+
+    fi
     cleanup
     exit 0
 fi
