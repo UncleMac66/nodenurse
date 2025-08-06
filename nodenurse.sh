@@ -1199,7 +1199,7 @@ if [[ $ntype == captop ]]; then
 fi
 
 
-if [[ $ntype == remove ]]; then
+if [[ $ntype ==  add ]]; then
     
    #   error "Cannot find the capacity topology id, are you sure one is active in this compartment?\n       Try manually running bin/runcaptopreport.py --capacity-id <id>"
    echo -e "\n"
