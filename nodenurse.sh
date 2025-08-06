@@ -21,6 +21,7 @@ Options:
   -u, update           Update the slurm state on the node(s).
   -v, validate         Run nodes through checks to ensure ansible scripts will work.
   captop               Run a report on capacity topology if tenancy is enabled for it
+  remove               Generate the resize command to remove the given node(s)
 
 Arguments:
 HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2) or slurm notation like gpu-[1,2,5-6].
@@ -88,8 +89,11 @@ start_timestamp=`date -u +'%F %T'`
 
 # Initialize folders/files
 cd "$(dirname "$0")"
+
+directory=$(dirname "$0")
+
 # Create logs folder if it doesn't exist
-LOGS_FOLDER="logs"
+LOGS_FOLDER="$(pwd)/logs"
 if [ ! -d "$LOGS_FOLDER" ]; then
   mkdir -p "$LOGS_FOLDER"
 fi
@@ -97,13 +101,16 @@ LOG_FILE=$date-nodenurse.log
 LOG_PATH="$LOGS_FOLDER/$LOG_FILE"
 
 # Create nccl_tests folder if it doesn't exist
-NCCL_FOLDER="nccl_tests"
+NCCL_FOLDER="$(pwd)/nccl_tests"
 if [ ! -d "$NCCL_FOLDER" ]; then
   mkdir -p "$NCCL_FOLDER"
 fi
 
 # Initialize global variables
-compartmentid=$(cat /opt/oci-hpc/conf/queues.conf | grep targetCompartment: | sort -u | awk '{print $2}')
+tenancyid=$(cat /etc/ansible/hosts | grep tenancy_ocid | sort -u | head -n 1 | awk '{print $3}')
+compartmentid=$(cat /opt/oci-hpc/conf/queues.conf | grep targetCompartment: | sort -u | head -n 1 |awk '{print $2}')
+region=$(cat /opt/oci-hpc/conf/queues.conf | grep region: | sort -u | head -n 1 |awk '{print $2}')
+availdomain=$(cat /opt/oci-hpc/conf/queues.conf | grep ad: | sort -u | head -n 1 |awk '{print $2}')
 reboot=true
 goodtag=true
 allocstate=false
@@ -177,6 +184,11 @@ elif [[ $1 == "setuptag" ]]; then
 elif [[ $1 == "captop" ]]; then
     ntype=captop
     echo -e "\nCapacity Topology Mode...\n"
+
+elif [[ $1 == "remove" ]]; then
+    ntype=remove
+    echo -e "\nremove Mode...\n"
+
 
 elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]] || [[ $1 == "help" ]]; then
     echo "$HELP_MESSAGE"
@@ -1161,7 +1173,34 @@ fi
 
 if [[ $ntype == captop ]]; then
     captopid=$(oci compute capacity-topology list --compartment-id "$compartmentid" --auth instance_principal 2> /dev/null | jq -r .data.items[].id 2> /dev/null)
+
     if [[ -z $captopid ]]; then
+        captopid=$(oci compute capacity-topology list --compartment-id "$tenancyid" --auth instance_principal 2> /dev/null | jq -r .data.items[].id 2> /dev/null)
+    fi
+
+    if [[ -z $captopid ]]; then
+        warn "Cannot find the capacity topology id, are you sure one is active in this compartment?\n       Try manually running bin/runcaptopreport.py --capacity-id <id>"
+	echo ""
+        confirm "Would you like to try and generate one?" || exit 0
+        echo -e "
+{
+    \"capacityType\": \"DEDICATED\",
+    \"compartmentId\": \"$tenancyid\"
+} 
+" >> nn-input.json
+
+        oci compute capacity-topology create --region us-ashburn-1 --availability-domain $availdomain --compartment-id $tenancyid --capacity-source file://nn-input.json --auth instance_principal || rm nn-input.json;error "Capacity Topology creation failed!"
+
+	$0 captop
+
+    fi
+    cleanup
+    exit 0
+fi
+
+
+if [[ $ntype == remove ]]; then
+    
    #   error "Cannot find the capacity topology id, are you sure one is active in this compartment?\n       Try manually running bin/runcaptopreport.py --capacity-id <id>"
    echo -e "\n"
     fi
@@ -1208,8 +1247,4 @@ Total :: 128 BM.GPU.H100.8
             else
 	      error "There's already a nodenurse tmux session running. Please ensure that a session named '$SESSION' isn't currently active and retry"
             fi
-
-    fi
-    cleanup
-    exit 0
 fi
