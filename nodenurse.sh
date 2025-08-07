@@ -1202,7 +1202,7 @@ if [[ $ntype == captop ]]; then
     fi
 
     if [[ -z $captopid ]]; then
-        warn "Cannot find the capacity topology id, are you sure one is active in this compartment?\n       Try manually running bin/runcaptopreport.py --capacity-id <id>"
+        warn "Cannot find the capacity topology id, are you sure one is active in this compartment?\n         Try manually running bin/runcaptopreport.py --capacity-id <id>"
 	echo ""
         confirm "Would you like to try and generate one?" || exit 0
         echo -e "
@@ -1210,11 +1210,11 @@ if [[ $ntype == captop ]]; then
     \"capacityType\": \"DEDICATED\",
     \"compartmentId\": \"$tenancyid\"
 } 
-" >> nn-input.json
+" > nn-input.json
 
         oci compute capacity-topology create --region us-ashburn-1 --availability-domain $availdomain --compartment-id $tenancyid --capacity-source file://nn-input.json --wait-for-state ACTIVE --auth instance_principal
 
-	 rm nn-input.json;error "Capacity Topology creation failed!"
+        rm nn-input.json
 
 	$0 captop
 
