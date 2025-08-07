@@ -23,6 +23,9 @@ Options:
   captop               Run a report on capacity topology if tenancy is enabled for it
   remove               Generate the resize command to remove the given node(s)
 
+  --quiet              Remove confirmations and warnings to allow for running without user input
+                       (Only works on options that don't explicitly ask for details)
+
 Arguments:
 HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2) or slurm notation like gpu-[1,2,5-6].
 
@@ -63,13 +66,16 @@ Notes:
 HELP_BRIEF="usage: $0 [-c, healthcheck] [-l, latest] [-r, reboot]
                       [-i, identify] [-t, tag] [-n, nccl] [ -v, validate ]
 		      [-s, ncclscout] [-u, update] [-e, exec]
-		      [captop] [setuptags] [-h, --help, help] 
+		      [captop] [setuptag] [remove] [--quiet]
+		      [-h, --help, help] 
 
                       Arguments: {HOST(S),HOSTFILE,--all,--idle,--drain,--down,
 	                          --alldown,--partition <name>}
 
 examples: ./nodenurse.sh healthcheck gpu-123
-          ./nodenurse.sh reboot --idle" 
+          ./nodenurse.sh reboot --idle
+	  ./nodenurse.sh validate --partition compute
+" 
 
 # Check if an argument is passed
 if [ -z "$1" ]; then
@@ -106,24 +112,16 @@ if [ ! -d "$NCCL_FOLDER" ]; then
   mkdir -p "$NCCL_FOLDER"
 fi
 
-# Initialize global variables
-tenancyid=$(cat /etc/ansible/hosts | grep tenancy_ocid | sort -u | head -n 1 | awk '{print $3}')
-compartmentid=$(cat /opt/oci-hpc/conf/queues.conf | grep targetCompartment: | sort -u | head -n 1 |awk '{print $2}')
-region=$(cat /opt/oci-hpc/conf/queues.conf | grep region: | sort -u | head -n 1 |awk '{print $2}')
-availdomain=$(cat /opt/oci-hpc/conf/queues.conf | grep ad: | sort -u | head -n 1 |awk '{print $2}')
-reboot=true
-goodtag=true
-allocstate=false
-parallel=false
-goodhealth=true
-goodssh=true
-goodinst=true
-goodslurm=true
-goodstate=true
+# some defaults
+quietmode=false
 
 # warn function
 warn(){
-    echo -e "${YELLOW}WARNING:${NC} $1\n"
+    if [[ $quietmode == true ]]; then
+      return
+    else
+      echo -e "${YELLOW}WARNING:${NC} $1\n"
+    fi
 }
 
 # error function
@@ -224,6 +222,11 @@ while [[ $# -gt 0 ]]; do
     fi
 
     case "$1" in 
+
+      --quiet)
+	quietmode=true
+	shift
+	;;
 
       -p|--partition)
 	if [[ $# -lt 2 ]] || [ "${2:0:1}" == "-" ]; then
@@ -343,7 +346,7 @@ for i in $nodes; do
     activeres+="$(sinfo -h -o "%n %i" | grep ubuntu | grep "$i " | awk '{print $2}') "
 done
 
-# depuplicate
+# depuplicate active reservation
 activeres=$(echo $activeres | tr " " "\n" | sort -u | tr "\n" " " )
 
 if [[ $(echo $activeres | wc -w) -gt 1 ]] && [[ $ntype == nccl ]]; then
@@ -354,7 +357,30 @@ else
     reservation=""
 fi
 
+# Initialize global variables and defaults
+tenancyid=$(cat /etc/ansible/hosts | grep tenancy_ocid | sort -u | head -n 1 | awk '{print $3}')
+compartmentid=$(cat /opt/oci-hpc/conf/queues.conf | grep targetCompartment: | sort -u | head -n 1 |awk '{print $2}')
+region=$(cat /opt/oci-hpc/conf/queues.conf | grep region: | sort -u | head -n 1 |awk '{print $2}')
+availdomain=$(cat /opt/oci-hpc/conf/queues.conf | grep ad: | sort -u | head -n 1 |awk '{print $2}')
+reboot=true
+goodtag=true
+allocstate=false
+if [[ $numnodes -gt 2 ]]; then
+  parallel=true
+else
+  parallel=false
+fi
+goodhealth=true
+goodssh=true
+goodinst=true
+goodslurm=true
+goodstate=true
+
 confirm(){
+
+    if [[ $quietmode == true ]]; then
+      return
+    fi
 
     if [ -n "$1" ]; then
       prompt="$1 (yes/no/quit)"
@@ -711,14 +737,6 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
       warn "Healthcheck gathering on $numnodes nodes completed with errors"
     fi
 
-
-    # Offer to run ncclscout if number of node is greater then 1, healthchecks are good and ncclscout.py is present in the directory
-    if [ $numnodes -gt 1 ] && [ $goodhealth == true ] && [ -f "bin/ncclscout.py" ];then
-      confirm "Would you like to run ncclscout on these $numnodes nodes?" || exit 0
-      check_shape
-      nccl_scout
-    fi
-
 fi
 
 # Main function for --reboot
@@ -814,6 +832,7 @@ fi
 
 # Main function for full nccl test on nodes
 if [[ $ntype == nccl ]]; then
+    quietmode=false
 
     display_nodes 
 
@@ -929,6 +948,7 @@ fi
 # Main function for updating hosts
 if [[ $ntype == update ]]; then
 
+    quietmode=false
     display_nodes
 
     echo -ne "Select option to apply:
@@ -1045,12 +1065,12 @@ if [[ $ntype == exec ]]; then
 
     display_nodes
 
-    parallel=true
+    execparallel=true
 
     while true; do
       # Ask for cmd to run
       echo -e "Please enter the command you'd like to run on these node(s)\n[ q: quit, s: sequential mode, p: parallel mode (default) ]\n"
-      if [[ $parallel == false ]]; then
+      if [[ $execparallel == false ]]; then
         echo -e "${GREEN}Sequential Mode${NC}"
       else
         echo -e "${GREEN}Parallel Mode${NC}"
@@ -1060,11 +1080,11 @@ if [[ $ntype == exec ]]; then
       echo ""
       case "$cmd" in
 	q) exit 0;;
-	s) parallel=false;;
-	p) parallel=true;;
+	s) execparallel=false;;
+	p) execparallel=true;;
 	*)
           # Run commands
-          if [[ $parallel == false ]]; then
+          if [[ $execparallel == false ]]; then
             execute $cmd
           else
             execute -p $cmd
@@ -1172,6 +1192,9 @@ if [[ $ntype == validate ]]; then
 fi
 
 if [[ $ntype == captop ]]; then
+
+    quietmode=false
+
     captopid=$(oci compute capacity-topology list --compartment-id "$compartmentid" --auth instance_principal 2> /dev/null | jq -r .data.items[].id 2> /dev/null)
 
     if [[ -z $captopid ]]; then
@@ -1189,7 +1212,9 @@ if [[ $ntype == captop ]]; then
 } 
 " >> nn-input.json
 
-        oci compute capacity-topology create --region us-ashburn-1 --availability-domain $availdomain --compartment-id $tenancyid --capacity-source file://nn-input.json --auth instance_principal || rm nn-input.json;error "Capacity Topology creation failed!"
+        oci compute capacity-topology create --region us-ashburn-1 --availability-domain $availdomain --compartment-id $tenancyid --capacity-source file://nn-input.json --wait-for-state ACTIVE --auth instance_principal
+
+	 rm nn-input.json;error "Capacity Topology creation failed!"
 
 	$0 captop
 
