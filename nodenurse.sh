@@ -1195,7 +1195,9 @@ if [[ $ntype == captop ]]; then
 
     quietmode=false
 
-    captopid=$(oci compute capacity-topology list --compartment-id "$compartmentid" --auth instance_principal 2> /dev/null | jq -r .data.items[].id 2> /dev/null)
+    captoplist=$(oci compute capacity-topology list --compartment-id "$compartmentid" --auth instance_principal)
+    echo $captoplist
+ #   captoplist=$(oci compute capacity-topology list --compartment-id "$compartmentid" --auth instance_principal 2> /dev/null | jq -r .data.items[].id 2> /dev/null)
 
     if [[ -z $captopid ]]; then
         captopid=$(oci compute capacity-topology list --compartment-id "$tenancyid" --auth instance_principal 2> /dev/null | jq -r .data.items[].id 2> /dev/null)
@@ -1219,6 +1221,7 @@ if [[ $ntype == captop ]]; then
 	$0 captop
 
     fi
+    bin/runcaptopreport.py --capacity-id $captop
     cleanup
     exit 0
 fi
