@@ -1200,7 +1200,7 @@ if [[ $ntype == captop ]]; then
     captopid=$(echo $captopid | jq -r '.data.items[] | select(."lifecycle-state" == "ACTIVE") | .id')
 
     if [[ -z $captopid ]]; then
-        captopid=$(oci compute capacity-topology list --compartment-id "$compartmentid" --auth instance_principal 2> /dev/null)
+        captopid=$(oci compute capacity-topology list --compartment-id "$tenancyid" --auth instance_principal 2> /dev/null)
         captopid=$(echo $captopid | jq -r '.data.items[] | select(."lifecycle-state" == "ACTIVE") | .id')
     fi
 
@@ -1215,7 +1215,7 @@ if [[ $ntype == captop ]]; then
 } 
 " > nn-input.json
 
-        oci compute capacity-topology create --region us-ashburn-1 --availability-domain $availdomain --compartment-id $tenancyid --capacity-source file://nn-input.json --wait-for-state ACTIVE --auth instance_principal
+        oci compute capacity-topology create --region $region --availability-domain $availdomain --compartment-id $tenancyid --capacity-source file://nn-input.json --wait-for-state ACTIVE --auth instance_principal
 
         rm nn-input.json
 
