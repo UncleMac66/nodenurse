@@ -1201,7 +1201,7 @@ if [[ $ntype == captop ]]; then
 
     if [[ -z $captopid ]]; then
         captopid=$(oci compute capacity-topology list --compartment-id "$compartmentid" --auth instance_principal 2> /dev/null)
-        captoplist=$(echo $captoplist | jq -r '.data.items[] | select(."lifecycle-state" == "ACTIVE") | .id')
+        captopid=$(echo $captopid | jq -r '.data.items[] | select(."lifecycle-state" == "ACTIVE") | .id')
     fi
 
     if [[ -z $captopid ]]; then
