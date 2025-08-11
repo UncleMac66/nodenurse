@@ -1222,7 +1222,7 @@ if [[ $ntype == captop ]]; then
 	$0 captop
 
     fi
-    bin/runcaptopreport.py --capacity-id $captop
+    bin/runcaptopreport.py --capacity-id $captopid
     cleanup
     exit 0
 fi
