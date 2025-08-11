@@ -1195,12 +1195,12 @@ if [[ $ntype == captop ]]; then
 
     quietmode=false
 
-    captopid=$(oci compute capacity-topology list --compartment-id "$compartmentid" --auth instance_principal 2> /dev/null)
+    captopid=$(oci compute capacity-topology list --compartment-id "$compartmentid" --auth instance_principal )
 
     captopid=$(echo $captopid | jq -r '.data.items[] | select(."lifecycle-state" == "ACTIVE") | .id')
 
     if [[ -z $captopid ]]; then
-        captopid=$(oci compute capacity-topology list --compartment-id "$tenancyid" --auth instance_principal 2> /dev/null)
+        captopid=$(oci compute capacity-topology list --compartment-id "$tenancyid" --auth instance_principal )
         captopid=$(echo $captopid | jq -r '.data.items[] | select(."lifecycle-state" == "ACTIVE") | .id')
     fi
 
