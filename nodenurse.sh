@@ -1215,13 +1215,12 @@ if [[ $ntype == captop ]]; then
 } 
 " > nn-input.json
 
-        oci compute capacity-topology create --region $region --availability-domain $availdomain --compartment-id $tenancyid --capacity-source file://nn-input.json --wait-for-state ACTIVE --auth instance_principal
+        captopid=$(oci compute capacity-topology create --region $region --availability-domain $availdomain --compartment-id $tenancyid --capacity-source file://nn-input.json --wait-for-state ACTIVE --auth instance_principal)
 
         rm nn-input.json
 
-	$0 captop
-
     fi
+
     bin/runcaptopreport.py --capacity-id $captopid
     cleanup
     exit 0
