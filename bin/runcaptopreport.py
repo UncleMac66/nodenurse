@@ -47,7 +47,7 @@ try:
             state_counts[status]+=1
         else:
             state_counts[status]=1
-    print("State :: "shape,+str(state_counts)+"\n")
+    print("State :: ",shape,+str(state_counts)+"\n")
     print("Total ::", count, shape)
 
 
