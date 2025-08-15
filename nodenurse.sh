@@ -185,7 +185,7 @@ elif [[ $1 == "captop" ]]; then
 
 elif [[ $1 == "remove" ]]; then
     ntype=remove
-    echo -e "\nremove Mode...\n"
+    echo -e "\nRemove Mode...\n"
 
 
 elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]] || [[ $1 == "help" ]]; then
@@ -1226,4 +1226,27 @@ if [[ $ntype == captop ]]; then
     exit 0
 fi
 
+get_cluster(){
 
+    clust=$(scontrol show node $1 | grep "CN__" | awk -F '__' '{print $2}' | sort -u)
+    echo $clust
+
+}
+
+
+
+
+if [[ $ntype == remove ]]; then
+
+	display_nodes
+
+	for i in $nodes
+	do
+	  nclust=$(get_cluster $i)
+	  echo $nclust
+	
+	done
+
+    #display_nodes
+
+fi
