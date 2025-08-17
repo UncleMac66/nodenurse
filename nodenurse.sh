@@ -667,7 +667,7 @@ display_nodes(){
     # If down/drain nodes then display reasons
     if [ -n "$(sinfo -R -h)" ] && [ $goodstate == "false" ];then
       echo -e "More detail on down/drain nodes:\n"
-      sinfo -R -o "%25n %6t %E" | head -1
+      sinfo -R -o "%30n %6t %E" | head -1
       for i in $nodes
       do
 	sinfo -R -o "%30n %6t %E" | grep --color=always "$i "
