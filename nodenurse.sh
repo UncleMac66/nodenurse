@@ -1252,6 +1252,8 @@ if [[ $ntype == remove ]]; then
 
 	if [[ $(echo $remove_cluster | wc -w) -gt 1 ]]; then
 	  error "Given nodes reside in more than 1 cluster.\n       Hint, cluster name is appended to a node's instance name."
+	elif [[ $goodslurm == false ]] || [[ $goodinst == false ]]; then
+	  error "At least one node can't be located in /etc/hosts or slurm, please check and try again"
         elif [[ -z $( echo $remove_cluster | tr -d " " ) ]]; then
 	  remove_cluster=""
 	else
