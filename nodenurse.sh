@@ -1242,11 +1242,18 @@ if [[ $ntype == remove ]]; then
 
 	for i in $nodes
 	do
-	  nclust=$(get_cluster $i)
-	  echo $nclust
-	
+	  remove_cluster+="$(get_cluster $i) "
+	  remove_nodes+="$(generate_instance_name $i) "
 	done
+	
+	remove_cluster=$(echo $remove_cluster | tr " " "\n" | sort -u | tr "\n" " ")
 
-    #display_nodes
+	if [[ $(echo $remove_cluster | wc -w) -gt 1 ]]; then
+	  error "Given nodes reside in more than 1 cluster.\n       Hint, cluster name is appended to a node's instance name."
+	fi
+
+	echo -e "Resize command:\n"
+	echo -e "/opt/oci-hpc/bin/resize.sh remove --nodes $remove_nodes --cluster_name $remove_cluster\n"
+
 
 fi
