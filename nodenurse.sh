@@ -670,7 +670,7 @@ display_nodes(){
       sinfo -R -o "%25n %6t %E" | head -1
       for i in $nodes
       do
-	sinfo -R -o "%25n %6t %E" | grep --color=always "$i "
+	sinfo -R -o "%30n %6t %E" | grep --color=always "$i "
       done
       echo ""
     fi
