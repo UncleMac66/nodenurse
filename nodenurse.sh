@@ -1238,6 +1238,8 @@ get_cluster(){
 
 if [[ $ntype == remove ]]; then
 
+        quietmode=true
+
 	display_nodes
 
 	for i in $nodes
@@ -1250,10 +1252,15 @@ if [[ $ntype == remove ]]; then
 
 	if [[ $(echo $remove_cluster | wc -w) -gt 1 ]]; then
 	  error "Given nodes reside in more than 1 cluster.\n       Hint, cluster name is appended to a node's instance name."
+        elif [[ -z $remove_cluster ]]; then
+	  remove_cluster=""
+	else
+	  remove_cluster="--cluster_name $remove_cluster"
 	fi
 
 	echo -e "Resize command:\n"
-	echo -e "/opt/oci-hpc/bin/resize.sh remove --nodes $remove_nodes --cluster_name $remove_cluster\n"
+	echo -e "/opt/oci-hpc/bin/resize.sh remove --nodes $remove_nodes $remove_cluster\n"
 
+	cleanup
 
 fi
