@@ -100,6 +100,7 @@ directory=$(dirname "$0")
 
 # Create logs folder if it doesn't exist
 LOGS_FOLDER="$(pwd)/logs"
+BIN_FOLDER="$(pwd)/bin"
 if [ ! -d "$LOGS_FOLDER" ]; then
   mkdir -p "$LOGS_FOLDER"
 fi
@@ -187,7 +188,6 @@ elif [[ $1 == "remove" ]]; then
     ntype=remove
     echo -e "\nRemove Mode...\n"
 
-
 elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]] || [[ $1 == "help" ]]; then
     echo "$HELP_MESSAGE"
     exit 0
@@ -213,17 +213,18 @@ while [[ $# -gt 0 ]]; do
       do
         nodes+="$i "
       done
-      break
+      shift
     elif [ -z "$1" ]; then
 
       # no argument provided so ask for a slurm status
       echo -e "\nNo hosts provided.\n\nPlease provide hosts manually, or specify a slurm status (i.e. --idle, --down, --drain, --all)\n"
-      break
+      shift
     fi
 
     case "$1" in 
 
-      --quiet)
+      --quiet|-q)
+	echo -e "Quiet mode activated\n"
 	quietmode=true
 	shift
 	;;
@@ -241,10 +242,11 @@ while [[ $# -gt 0 ]]; do
         if [ -z "$gatherstate" ]; then
 	  echo -e "Filtering all hosts from slurm...\n"
 	  gatherstate="-t all"
+	  gathername="--all"
           shift
         else
-	  echo -e "--${gatherstate:3} already given, ignoring $1...\n"
-	  break
+	  echo -e "$gathername already given, ignoring $1...\n"
+	  shift
 	fi
         ;;
 
@@ -252,10 +254,11 @@ while [[ $# -gt 0 ]]; do
         if [ -z "$gatherstate" ]; then
           echo -e "Filtering hosts from slurm marked as 'down'...\n"
 	  gatherstate="-t down"
+	  gathername="--down"
           shift
         else
-	  echo -e "--${gatherstate:3} already given, ignoring $1...\n"
-	  break
+	  echo -e "$gathername already given, ignoring $1...\n"
+	  shift
 	fi
         ;;
 
@@ -263,10 +266,11 @@ while [[ $# -gt 0 ]]; do
         if [ -z "$gatherstate" ]; then
           echo -e "Filtering hosts from slurm marked as 'drain'...\n"
 	  gatherstate="-t drain"
+	  gathername="--drain"
 	  shift
         else
-	  echo -e "--${gatherstate:3} already given, ignoring $1...\n"
-	  break
+	  echo -e "$gathername already given, ignoring $1...\n"
+	  shift
 	fi
 	;;
 
@@ -274,10 +278,11 @@ while [[ $# -gt 0 ]]; do
         if [ -z "$gatherstate" ]; then
           echo -e "Filtering hosts from slurm marked as 'down' and 'drain'...\n"
 	  gatherstate="-t drain,down"
+	  gathername="--alldown"
 	  shift
         else
-	  echo -e "--${gatherstate:3} already given, ignoring $1...\n"
-	  break
+	  echo -e "$gathername already given, ignoring $1...\n"
+	  shift
 	fi
 	;;
 
@@ -285,10 +290,11 @@ while [[ $# -gt 0 ]]; do
         if [ -z "$gatherstate" ]; then
           echo -e "Filtering hosts from slurm marked as 'idle'...\n"
 	  gatherstate="idle"
+	  gathername="--idle"
 	  shift
         else
-	  echo -e "--${gatherstate:3} already given, ignoring $1...\n"
-	  break
+	  echo -e "$gathername already given, ignoring $1...\n"
+	  shift
 	fi
 	;;
 
@@ -296,19 +302,18 @@ while [[ $# -gt 0 ]]; do
         if [ -z "$gatherstate" ]; then
           echo -e "Filtering hosts from slurm marked as 'maint'...\n"
 	  gatherstate="-t maint"
+	  gathername="--maint"
 	  shift
         else
-	  echo -e "--${gatherstate:3} already given, ignoring $1...\n"
-	  break
+	  echo -e "$gathername already given, ignoring $1...\n"
+	  shift
 	fi
 	;;
 
       *)
-        if [ "${2:0:1}" == "-" ]; then
+        if [ "${1:0:1}" == "-" ] || [ "${1:0:2}" == "--" ]; then
           # arg is a mistyped flag so quit
-          echo -e "Unknown argument '$2'"
-          echo -e "Please provide hosts manually, or specify a slurm status (i.e. --idle, --down, --drain, --all)\n"
-          exit 1
+          echo -e "Unknown argument '$1', ignoring...\n"
         elif [[ "$1" =~ \[.*\] ]]; then
           # nodes are in slurm format
 	  nodes=$(scontrol show hostname $1 | tr "\n" " ")
@@ -318,7 +323,7 @@ while [[ $# -gt 0 ]]; do
             nodes+="$arg "
           done
           echo -e "Hostname(s) provided manually...\n"
-	  break
+	  shift
 	fi
 	shift
         ;;
@@ -469,7 +474,13 @@ finddiff(){
     echo "$diff_str"
 }
 
+# Function to return hpc-stack cluster name, which also happens to be the name of the instance pool
+get_cluster(){
 
+    clust=$(scontrol show node $1 | grep "CN__" | awk -F '__' '{print $2}' | sort -u)
+    echo $clust
+
+}
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's shape
 generate_shape() {
@@ -687,6 +698,42 @@ display_nodes(){
 
 }
 
+downloadhc(){
+
+
+# Base URL for the GitHub raw files
+BASE_URL="https://raw.githubusercontent.com/oracle-quickstart/oci-hpc/master/playbooks/roles/healthchecks/files"
+
+# List of files to download
+FILES=(
+    "check_gpu_setup.py"
+    "gpu_bw_test.py"
+    "rdma_link_flapping.py"
+    "shared_logging.py"
+    "xid_checker.py"
+)
+
+DOWNLOAD_DIR="$BIN_FOLDER/healthcheck"
+
+# Create the directory if it doesn't exist
+if [ ! -d "$DOWNLOAD_DIR" ]; then
+  mkdir -p "$DOWNLOAD_DIR"
+fi
+
+# rm $DOWNLOAD_DIR/*.py
+# Download each file if it doesn't already exist
+for FILE in "${FILES[@]}"; do
+    FILE_PATH="$DOWNLOAD_DIR/$FILE"
+
+    if [ ! -f "$FILE_PATH" ]; then
+        wget -q "$BASE_URL/$FILE" -P "$DOWNLOAD_DIR" > /dev/null 2>&1
+    fi
+
+done
+
+
+}
+
 # Main Function for --identify
 if [ $ntype == idnodes ]; then
 
@@ -701,6 +748,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
     # Initialize the node count and display node details
     display_nodes
+    downloadhc
 
     # Prompt user for parallelism if running fresh healthcheck and number of nodes is greater than 2 otherwise just run sequentially
     if [[ $numnodes -gt 2 ]] && [[ $ntype == healthfresh ]]; then
@@ -719,7 +767,8 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
       # if fresh or latest
       if [[ $ntype == healthfresh ]]; then
-        execute sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py || { goodhealth=false;echo -e "${RED}ERROR:${NC} Healthcheck for node $n failed. Ensure that node exists, can accept ssh and /opt/oci-hpc/healthchecks/check_gpu_setup.py exists"; }
+        echo $BIN_FOLDER
+        execute sudo python3 $BIN_FOLDER/healthcheck/check_gpu_setup.py || { goodhealth=false;echo -e "${RED}ERROR:${NC} Healthcheck for node $n failed. Ensure that node exists and can accept ssh"; }
       else
         execute cat /tmp/latest_healthcheck.log || { goodhealth=false;echo -e "${RED}ERROR:${NC} Gathering the latest healthcheck for node $n failed."; echo "       Ensure that healthchecks are enabled on the cluster"; }
       fi
@@ -727,7 +776,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
     else
       # otherwise run healthchecks in parallel
       echo -e "\nNote: To keep output brief, only reporting on errors and warnings"
-      execute -p sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py -l ERROR -l WARNING || goodhealth=false
+      execute -p sudo python3 $BIN_FOLDER/healthcheck/check_gpu_setup.py -l ERROR -l WARNING || goodhealth=false
     fi # End serial/parallel healthchecks 
 
     # If successful then output a good completion status, if errors present then inform user
@@ -1197,11 +1246,11 @@ if [[ $ntype == captop ]]; then
 
     captopid=$(oci compute capacity-topology list --compartment-id "$compartmentid" --auth instance_principal )
 
-    captopid=$(echo $captopid | jq -r '.data.items[] | select(."lifecycle-state" == "ACTIVE") | .id')
+    captopid=$(echo $captopid | jq -r '.data.items[] | select(."lifecycle-state" == "ACTIVE" or ."lifecycle-state" == "UPDATING") | .id')
 
     if [[ -z $captopid ]]; then
         captopid=$(oci compute capacity-topology list --compartment-id "$tenancyid" --auth instance_principal )
-        captopid=$(echo $captopid | jq -r '.data.items[] | select(."lifecycle-state" == "ACTIVE") | .id')
+        captopid=$(echo $captopid | jq -r '.data.items[] | select(."lifecycle-state" == "ACTIVE" or ."lifecycle-state" == "UPDATING") | .id')
     fi
 
     if [[ -z $captopid ]]; then
@@ -1226,12 +1275,6 @@ if [[ $ntype == captop ]]; then
     exit 0
 fi
 
-get_cluster(){
-
-    clust=$(scontrol show node $1 | grep "CN__" | awk -F '__' '{print $2}' | sort -u)
-    echo $clust
-
-}
 
 
 
