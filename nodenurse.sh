@@ -802,16 +802,16 @@ if [ $ntype == rebootall ]; then
 
 	  # Generate and display info for each node
 	  echo -e "\n----------------------------------------------------------------" | tee -a $LOG_PATH
-          inst=`generate_instance_name $n`
-          ocid=`generate_ocid $n`
+    inst=`generate_instance_name $n`
+    ocid=`generate_ocid $n`
 	  serial=`generate_serial $n`
-          echo -e "Rebooting ${YELLOW}$n${NC}" | tee -a $LOG_PATH
+    echo -e "Rebooting ${YELLOW}$n${NC}" | tee -a $LOG_PATH
 	  echo -e "Instance Name: $inst" | tee -a $LOG_PATH
 	  echo -e "Serial Number: $serial" | tee -a $LOG_PATH
 	  echo -e "OCID: $ocid\n" | tee -a $LOG_PATH
 
 	  # Send hard reboot signal to the node using the generated ocid
-          oci compute instance action --instance-id $ocid --action RESET --auth instance_principal >> $LOG_PATH || reboot=false	
+    oci compute instance action --instance-id $ocid --action RESET --auth instance_principal >> $LOG_PATH || reboot=false	
 
 	  # If the oci reboot cmd fails then inform user
 	  if [ $reboot == false ];
@@ -822,7 +822,7 @@ if [ $ntype == rebootall ]; then
 	  fi
 	  echo -e "----------------------------------------------------------------\n" | tee -a $LOG_PATH
 
-        done # End reboot loop
+  done # End reboot loop
 fi
 
 if [[ $ntype == setuptag ]]; then
@@ -840,7 +840,6 @@ if [[ $ntype == setuptag ]]; then
       fi
     fi
     echo ""
-    
 fi
 # Main function for tagging hosts unhealthy
 if [[ $ntype == tag ]]; then
@@ -901,19 +900,19 @@ if [[ $ntype == nccl ]]; then
       fi
 
       if [ ! -d "nccl_tests/" ]; then
-	mkdir nccl_tests/
+      	mkdir nccl_tests/
       fi
 
       echo ""
       for i in $(seq 1 $numtimes)
       do
-	sbatch -N $numnodes -w "$nodes" \
-	  --job-name=nodenurse_nccl \
-	  --output=nccl_tests/nccl_job-%j.out \
-	  --error=nccl_tests/nccl_job-%j.err \
-	  $reservation\
-	  $script \
-	  | tee -a jobid.tmp
+      	sbatch -N $numnodes -w "$nodes" \
+	      --job-name=nodenurse_nccl \
+	      --output=nccl_tests/nccl_job-%j.out \
+    	  --error=nccl_tests/nccl_job-%j.err \
+    	  $reservation\
+    	  $script \
+     	  | tee -a jobid.tmp
       done
 
       if [ $? -gt 0 ]; then
@@ -934,47 +933,49 @@ if [[ $ntype == nccl ]]; then
       do
         jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
 
-	while [[ $jobstate != "COMPLETED" ]]
-	do
+    	while [[ $jobstate != "COMPLETED" ]]
+      	do
           jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
-	  sleep .25
-	  echo -ne "\r |                          "
-	  sleep .25
-	  echo -ne "\r /                          "
-	  sleep .25
-	  echo -ne "\r -                          "
-	  sleep .25
-	  echo -ne "\r \\                          "
-	  let timetowait++
-	  if [[ $jobstate == "FAILED" ]]; then
-	    goodjob=false
-	    break
-	  fi
-	  if [[ $timetowait -gt 90 ]]; then
-	    warn "Timed out waiting for nccl Job $j."
-	    output=false
-	    break
-	  fi
+  	      sleep .25
+      	  echo -ne "\r |                          "
+      	  sleep .25
+      	  echo -ne "\r /                          "
+  	      sleep .25
+      	  echo -ne "\r -                          "
+  	      sleep .25
+  	      echo -ne "\r \\                          "
+  	      let timetowait++
+  	      if [[ $jobstate == "FAILED" ]]; then
+      	    goodjob=false
+  	        break
+  	      fi
+  	      if [[ $timetowait -gt 90 ]]; then
+  	        warn "Timed out waiting for nccl Job $j."
+  	        output=false
+      	    break
+      	  fi
         done
 
-        echo -e "\n----------------------------------------------------------------" 
-	echo -e "NCCL Test $numtest/$numtimes - ${YELLOW}JobID: $j${NC} - Time taken ~ $timetowait Seconds"
-        echo -e "----------------------------------------------------------------\n" 
-	if [ $goodjob = true ] && [ $output = true ]; then
-	  tail -15 nccl_tests/nccl_job-$j.out
-          echo -e "Full output stored at: nccl_tests/nccl_job-$j.out\n"
+      echo -e "\n----------------------------------------------------------------" 
+    	echo -e "NCCL Test $numtest/$numtimes - ${YELLOW}JobID: $j${NC} - Time taken ~ $timetowait Seconds"
+      echo -e "----------------------------------------------------------------\n" 
+
+    	if [ $goodjob = true ] && [ $output = true ]; then
+	      tail -15 nccl_tests/nccl_job-$j.out
+        echo -e "Full output stored at: nccl_tests/nccl_job-$j.out\n"
 	
-        elif [ $goodjob = false ] && [ $output = true ]; then
-          echo -e "${RED}ERROR:${NC} Job $j encountered a problem...\n"
-          tail -15 nccl_tests/nccl_job-$j.err
-          echo -e "\nFull error output stored at: nccl_tests/nccl_job-$j.err\n"
-	  goodjob=true
-        else
-	  warn "No output to show. Check on this job manually with squeue."
-	fi
-	let numtest++
-	timetowait=0
-      done
+      elif [ $goodjob = false ] && [ $output = true ]; then
+        echo -e "${RED}ERROR:${NC} Job $j encountered a problem...\n"
+        tail -15 nccl_tests/nccl_job-$j.err
+        echo -e "\nFull error output stored at: nccl_tests/nccl_job-$j.err\n"
+	      goodjob=true
+      else
+	      warn "No output to show. Check on this job manually with squeue."
+    	fi
+
+      let numtest++
+    	timetowait=0
+    done
 
       # clean up nccl script output
       cleanup
@@ -1128,17 +1129,17 @@ if [[ $ntype == exec ]]; then
       read cmd
       echo ""
       case "$cmd" in
-	q) exit 0;;
-	s) execparallel=false;;
-	p) execparallel=true;;
-	*)
+      	q) exit 0;;
+      	s) execparallel=false;;
+      	p) execparallel=true;;
+      	*)
           # Run commands
           if [[ $execparallel == false ]]; then
             execute $cmd
           else
             execute -p $cmd
           fi
-	;;
+      	;;
       esac
     done
 
@@ -1179,8 +1180,8 @@ if [[ $ntype == validate ]]; then
       
       if [ -n "$badsminodes" ]; then
         retestnodes=`finddiff "$nodes" "$oknodes"`
-	retestnodes=`finddiff "$badsminodes" "$retestnodes"`
-	echo ""
+      	retestnodes=`finddiff "$badsminodes" "$retestnodes"`
+	      echo ""
         warn "Ansible gather facts is failing, trying to find the offending node(s)..."
         warn "Trying again but removing the following node(s) with nvidia-smi issues"
         echo -e "${RED}$badsminodes${NC}"
@@ -1189,7 +1190,7 @@ if [[ $ntype == validate ]]; then
         do
           echo $i >> $date-hostfile.tmp
         done
-	echo ""
+	      echo ""
         timeout 20s ansible-playbook -T 3 -i $date-hostfile.tmp bin/gather_facts.yml | tee -a logs/$date-validate.log 
         oknodes=`cat logs/$date-validate.log | grep "ok:" | awk -F'[][]' '{print $2}'`
         retestnodes=`finddiff "$nodes" "$oknodes"`
@@ -1255,7 +1256,7 @@ if [[ $ntype == captop ]]; then
 
     if [[ -z $captopid ]]; then
         warn "Cannot find the capacity topology id, are you sure one is active in this compartment?\n         Try manually running bin/runcaptopreport.py --capacity-id <id>"
-	echo ""
+      	echo ""
         confirm "Would you like to try and generate one?" || exit 0
         echo -e "
 {
@@ -1265,9 +1266,7 @@ if [[ $ntype == captop ]]; then
 " > nn-input.json
 
         captopid=$(oci compute capacity-topology create --region $region --availability-domain $availdomain --compartment-id $tenancyid --capacity-source file://nn-input.json --wait-for-state ACTIVE --auth instance_principal)
-
         rm nn-input.json
-
     fi
 
     bin/runcaptopreport.py --capacity-id $captopid
@@ -1281,8 +1280,7 @@ fi
 
 if [[ $ntype == remove ]]; then
 
-        quietmode=true
-
+  quietmode=true
 	display_nodes
 
 	for i in $nodes
@@ -1297,7 +1295,7 @@ if [[ $ntype == remove ]]; then
 	  error "Given nodes reside in more than 1 cluster.\n       Hint, cluster name is appended to a node's instance name."
 	elif [[ $goodslurm == false ]] || [[ $goodinst == false ]]; then
 	  error "At least one node can't be located in /etc/hosts or slurm, please check and try again"
-        elif [[ -z $( echo $remove_cluster | tr -d " " ) ]]; then
+  elif [[ -z $( echo $remove_cluster | tr -d " " ) ]]; then
 	  remove_cluster=""
 	else
 	  remove_cluster="--cluster_name $remove_cluster"
