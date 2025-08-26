@@ -23,11 +23,8 @@ Options:
   captop               Run a report on capacity topology if tenancy is enabled for it
   remove               Generate the resize command to remove the given node(s)
 
-  --quiet              Remove confirmations and warnings to allow for running without user input
-                       (Only works on options that don't explicitly ask for details)
-
 Arguments:
-HOST(S)                An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2) or slurm notation like gpu-[1,2,5-6].
+HOST(S)                  An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2) or slurm notation like gpu-[1,2,5-6].
 
   --all,-a               Use all hosts that are listed in slurm.
 
@@ -43,19 +40,21 @@ HOST(S)                An input hostfile, or space separated list of hostnames (
 
   --partition,-p <name>  Use all nodes in a specified slurm partition name (i.e. compute).
 
+  --quiet                Remove confirmations and warnings to allow for running without user input
+                         (Only works on options that don't explicitly ask for details)
 
 Examples:
-  $0 -c <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
-  $0 -r gpu-1                 sends a hard reboot signal to node 'gpu-1'.
-  $0 -v --all                 validates all nodes
-  $0 -e -p compute            starts a remote execution prompt using all nodes in the 'compute' slurm partition
-  $0 latest --alldown         grabs the latest healthchecks from nodes marked as drain or down in slurm.
-  $0 identify gpu-1 gpu-2     display details about 'gpu-1' and 'gpu-2' then quit.
+  $0 healthcheck <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
+  $0 reboot gpu-1                      sends a hard reboot signal to node 'gpu-1'.
+  $0 validate --all                    validates all nodes
+  $0 exec -p compute                   starts a remote execution prompt using all nodes in the 'compute' slurm partition
+  $0 latest --alldown                  grabs the latest healthchecks from nodes marked as drain or down in slurm.
+  $0 identify gpu-1 gpu-2              display details about 'gpu-1' and 'gpu-2' then quit.
+  $0 -c gpu-[1,2] --quiet              run a fresh healthcheck on 'gpu-1' and 'gpu-2' without confirmations then quit.
 
 Notes:
   - nodenurse.sh gets compartment OCID from /opt/oci-hpc/conf/queues.conf.
-    If you use queues across compartments please double check this value and consider 
-    hard-coding it to your use case.
+    If you use queues across compartments please double check this value.
 
   - In order for tagging hosts as unhealthy to work properly, your tenancy must be properly
     whitelisted for unhealthy instance tagging.
@@ -66,11 +65,11 @@ Notes:
 HELP_BRIEF="usage: $0 [-c, healthcheck] [-l, latest] [-r, reboot]
                       [-i, identify] [-t, tag] [-n, nccl] [ -v, validate ]
 		      [-s, ncclscout] [-u, update] [-e, exec]
-		      [captop] [setuptag] [remove] [--quiet]
+		      [captop] [setuptag] [remove]
 		      [-h, --help, help] 
 
-                      Arguments: {HOST(S),HOSTFILE,--all,--idle,--drain,--down,
-	                          --alldown,--partition <name>}
+Arguments: {HOST(S),HOSTFILE,--all,--idle,--drain,--down,
+            --alldown,--partition <name>, --quiet}
 
 examples: ./nodenurse.sh healthcheck gpu-123
           ./nodenurse.sh reboot --idle
@@ -215,100 +214,102 @@ while [[ $# -gt 0 ]]; do
       done
       shift
     elif [ -z "$1" ]; then
-
       # no argument provided so ask for a slurm status
       echo -e "\nNo hosts provided.\n\nPlease provide hosts manually, or specify a slurm status (i.e. --idle, --down, --drain, --all)\n"
       shift
     fi
 
+# Argument switch
     case "$1" in 
 
       --quiet|-q)
-	echo -e "Quiet mode activated\n"
-	quietmode=true
-	shift
-	;;
+        if [[ $quietmode == "false" ]] ; then
+	        echo -e "Quiet mode activated\n"
+	        quietmode=true
+        fi
+	      shift
+    	;;
 
       -p|--partition)
-	if [[ $# -lt 2 ]] || [ "${2:0:1}" == "-" ]; then
-	  error "-p/--partition requires a specified partition. (i.e. '-p compute')"
+	      if [[ $# -lt 2 ]] || [ "${2:0:1}" == "-" ]; then
+	        error "-p/--partition requires a specified partition. (i.e. '-p compute')"
         fi
         echo -e "Filtering hosts from the $2 partition...\n"
         gatherpartition="-p $2"
         shift 2
-        ;;
+      ;;
 
       -a|--all)
         if [ -z "$gatherstate" ]; then
-	  echo -e "Filtering all hosts from slurm...\n"
-	  gatherstate="-t all"
-	  gathername="--all"
+	        echo -e "Filtering all hosts from slurm...\n"
+	        gatherstate="-t all"
+	        gathername="--all"
           shift
         else
-	  echo -e "$gathername already given, ignoring $1...\n"
-	  shift
-	fi
-        ;;
+	       echo -e "$gathername already given, ignoring $1...\n"
+	       shift
+	      fi
+      ;;
 
       --down)
         if [ -z "$gatherstate" ]; then
           echo -e "Filtering hosts from slurm marked as 'down'...\n"
-	  gatherstate="-t down"
-	  gathername="--down"
+	          gatherstate="-t down"
+	          gathername="--down"
           shift
         else
-	  echo -e "$gathername already given, ignoring $1...\n"
-	  shift
-	fi
-        ;;
+	        echo -e "$gathername already given, ignoring $1...\n"
+	        shift
+      	fi
+      ;;
 
       --drain)
         if [ -z "$gatherstate" ]; then
           echo -e "Filtering hosts from slurm marked as 'drain'...\n"
-	  gatherstate="-t drain"
-	  gathername="--drain"
-	  shift
+	        gatherstate="-t drain"
+	        gathername="--drain"
+      	  shift
         else
-	  echo -e "$gathername already given, ignoring $1...\n"
-	  shift
-	fi
-	;;
+	        echo -e "$gathername already given, ignoring $1...\n"
+	        shift
+	      fi
+	    ;;
 
       -dd|--alldown)
         if [ -z "$gatherstate" ]; then
           echo -e "Filtering hosts from slurm marked as 'down' and 'drain'...\n"
-	  gatherstate="-t drain,down"
-	  gathername="--alldown"
-	  shift
+	        gatherstate="-t drain,down"
+	        gathername="--alldown"
+	        shift
         else
-	  echo -e "$gathername already given, ignoring $1...\n"
-	  shift
-	fi
-	;;
+	        echo -e "$gathername already given, ignoring $1...\n"
+	        shift
+      	fi
+    	;;
 
       --idle)
         if [ -z "$gatherstate" ]; then
           echo -e "Filtering hosts from slurm marked as 'idle'...\n"
-	  gatherstate="idle"
-	  gathername="--idle"
-	  shift
+	        gatherstate="idle"
+      	  gathername="--idle"
+      	  shift
         else
-	  echo -e "$gathername already given, ignoring $1...\n"
-	  shift
-	fi
-	;;
+      	  echo -e "$gathername already given, ignoring $1...\n"
+      	  shift
+      	fi
+    	;;
 
       --maint)
         if [ -z "$gatherstate" ]; then
           echo -e "Filtering hosts from slurm marked as 'maint'...\n"
-	  gatherstate="-t maint"
-	  gathername="--maint"
-	  shift
+       	  gatherstate="-t maint"
+    	    gathername="--maint"
+      	  shift
         else
-	  echo -e "$gathername already given, ignoring $1...\n"
-	  shift
-	fi
-	;;
+      	  echo -e "$gathername already given, ignoring $1...\n"
+      	  shift
+      	fi
+    	;;
 
       *)
         if [ "${1:0:1}" == "-" ] || [ "${1:0:2}" == "--" ]; then
@@ -316,17 +317,17 @@ while [[ $# -gt 0 ]]; do
           echo -e "Unknown argument '$1', ignoring...\n"
         elif [[ "$1" =~ \[.*\] ]]; then
           # nodes are in slurm format
-	  nodes=$(scontrol show hostname $1 | tr "\n" " ")
+	        nodes=$(scontrol show hostname $1 | tr "\n" " ")
         else
           # arg is/are manually entered hostname(s)
           for arg in "${@:1}"; do
             nodes+="$arg "
           done
           echo -e "Hostname(s) provided manually...\n"
-	  shift
-	fi
-	shift
-        ;;
+      	  shift
+      	fi
+	      shift
+      ;;
 
   esac
 done
@@ -370,7 +371,7 @@ availdomain=$(cat /opt/oci-hpc/conf/queues.conf | grep ad: | sort -u | head -n 1
 reboot=true
 goodtag=true
 allocstate=false
-if [[ $numnodes -gt 2 ]]; then
+if [[ $numnodes -gt 3 ]]; then
   parallel=true
 else
   parallel=false
@@ -639,27 +640,27 @@ display_nodes(){
 
       # Node error checking
       case $state in
-	mix|alloc) allocstate=true;;
+	      mix|alloc) allocstate=true;;
         drain|down|drng) goodstate=false;;
-	"Not Found") goodslurm=false;;
+      	"Not Found") goodslurm=false;;
       esac
 
       if [[ $inst == "Not Found" ]]; then
-	goodinst=false
+	      goodinst=false
       fi
 
       # output node data
       if [[ $1 == "full" ]]; then
 
         serial=`generate_serial $n`
-	ocid=`generate_ocid $n`
-	shape=`generate_shape $n`
+      	ocid=`generate_ocid $n`
+      	shape=`generate_shape $n`
 
         if [[ $serial == "Error: SSH" ]]; then
           goodssh=false
         fi
 
-	printf "%-25s %-25s %-15s %-15s %-10s\n" "$n" "$inst" "$serial" "$shape" "$state"
+	      printf "%-25s %-25s %-15s %-15s %-10s\n" "$n" "$inst" "$serial" "$shape" "$state"
         echo -e "  \u21B3 $ocid"
         echo " "
 
@@ -681,7 +682,7 @@ display_nodes(){
       sinfo -R -o "%30n %6t %E" | head -1
       for i in $nodes
       do
-	sinfo -R -o "%30n %6t %E" | grep --color=always "$i "
+	      sinfo -R -o "%30n %6t %E" | grep --color=always "$i "
       done
       echo ""
     fi
@@ -767,7 +768,6 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
       # if fresh or latest
       if [[ $ntype == healthfresh ]]; then
-        echo $BIN_FOLDER
         execute sudo python3 $BIN_FOLDER/healthcheck/check_gpu_setup.py || { goodhealth=false;echo -e "${RED}ERROR:${NC} Healthcheck for node $n failed. Ensure that node exists and can accept ssh"; }
       else
         execute cat /tmp/latest_healthcheck.log || { goodhealth=false;echo -e "${RED}ERROR:${NC} Gathering the latest healthcheck for node $n failed."; echo "       Ensure that healthchecks are enabled on the cluster"; }
