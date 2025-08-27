@@ -419,7 +419,7 @@ confirm(){
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's instance name in the OCI console
 generate_instance_name() {
-    inst=`cat /etc/hosts | grep "$1 " | grep .local.vcn | awk '{print $4}'`
+    inst=`cat /etc/hosts | grep -w "$1" | grep .local.vcn | awk '{print $4}'`
     if [ -z $inst ]; then
       echo -e "Not Found"
     else
@@ -438,7 +438,7 @@ generate_ocid() {
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's state in slurm
 generate_slurm_state() {
-    outputstate=`sinfo -N | grep "$1 " | awk '{print $4}' | sort -u`
+    outputstate=`sinfo -N | grep -w "$1" | awk '{print $4}' | sort -u`
     if [ -z $outputstate ]; then
       echo -e "Not Found"
     else
@@ -931,11 +931,11 @@ if [[ $ntype == nccl ]]; then
 
       for j in $jobids
       do
-        jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
+        jobstate=`sacct -j "$j" -n -o "JobID,State" | grep -w "$j" | awk '{print $2}'`
 
     	while [[ $jobstate != "COMPLETED" ]]
       	do
-          jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
+          jobstate=`sacct -j "$j" -n -o "JobID,State" | grep -w "$j" | awk '{print $2}'`
   	      sleep .25
       	  echo -ne "\r |                          "
       	  sleep .25
@@ -1157,7 +1157,7 @@ if [[ $ntype == validate ]]; then
     confirm || exit 0
 
     echo -e "\nChecking for nvidia-smi errors...\n"
-    smiresults=`parallel-ssh -i -l ubuntu -H "$nodes" -t 15 "hostname;nvidia-smi | grep NVIDIA-SMI"`
+    smiresults=`parallel-ssh -i -l ubuntu -H "$nodes" -t 25 "hostname;nvidia-smi | grep NVIDIA-SMI"`
 
     if echo -e "$smiresults" | grep --color=always "FAILURE"; then
       echo -e "\nThe following nodes have nvidia-smi issues:\n"
@@ -1273,10 +1273,6 @@ if [[ $ntype == captop ]]; then
     cleanup
     exit 0
 fi
-
-
-
-
 
 if [[ $ntype == remove ]]; then
 
