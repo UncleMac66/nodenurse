@@ -2,4 +2,4 @@
 logs/*
 tmp_*
 nccl_tests/*
-healthcheck/*
+bin/healthcheck/*
