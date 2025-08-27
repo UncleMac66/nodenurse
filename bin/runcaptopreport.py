@@ -45,10 +45,10 @@ try:
     print("State :: "+str(state_counts)+"\n")
     print("Total ::", count, shape)
 
-if len(repair_nodes) > 0:
-    print("-----------------------------------\n      Nodes in Repair\n-----------------------------------")
-    for i in repair_nodes:
-        print(i)
+    if len(repair_nodes) > 0:
+        print("-----------------------------------\n      Nodes in Repair\n-----------------------------------")
+        for i in repair_nodes:
+            print(i)
 
 
 except Exception as e:
