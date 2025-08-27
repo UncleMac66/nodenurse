@@ -36,7 +36,7 @@ try:
                 status="RUNNING"
             else:
                 status="IN_REPAIR"
-                repair_nodes.append({ "name":node.instance_name,"ocid":node.instance_id})
+                repair_nodes.append({ "id":node.id })
 
         if status in state_counts.keys():
             state_counts[status]+=1
@@ -45,7 +45,10 @@ try:
     print("State :: "+str(state_counts)+"\n")
     print("Total ::", count, shape)
 
-
+if len(repair_nodes) > 0:
+    print("-----------------------------------\n      Nodes in Repair\n-----------------------------------")
+    for i in repair_nodes:
+        print(i)
 
 
 except Exception as e:
