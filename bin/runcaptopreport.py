@@ -26,22 +26,17 @@ try:
         status=node.lifecycle_details
         count+=1
         if status == "AVAILABLE" :
-            if not node.instance_id is None:
+            if node.instance_id:
                 status="RUNNING"
             else:
                 status="AVAILABLE"
 
-        if status == "UNAVAILABLE" :
-            if not node.instance_id is None:
+        if status == "UNAVAILABLE" or status == "DEGRADED" :
+            if node.instance_id:
                 status="RUNNING"
             else:
                 status="IN_REPAIR"
-
-        if status == "DEGRADED":
-            if node.instance_id is None:
-                status="IN_REPAIR"
-            else:
-                status="RUNNING"
+                repair_nodes.append({ "name":node.instance_name,"ocid":node.instance_id})
 
         if status in state_counts.keys():
             state_counts[status]+=1
@@ -49,6 +44,8 @@ try:
             state_counts[status]=1
     print("State :: "+str(state_counts)+"\n")
     print("Total ::", count, shape)
+
+
 
 
 except Exception as e:
