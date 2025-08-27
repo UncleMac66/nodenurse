@@ -1233,7 +1233,7 @@ if [[ $ntype == validate ]]; then
       echo $retestnodes | tr " " "\n" > hostfiles/$date-validate-badnodes
       echo -e "\nHostlist of trouble nodes saved at hostfiles/$date-validate-badnodes"
     else
-      echo -e "${GREEN}Success:${NC} Nodes are ansible validated and should work fine."
+      echo -e "${GREEN}Success:${NC} Nodes are ansible validated and resize.sh commmands should work fine."
     fi
 
     cleanup
