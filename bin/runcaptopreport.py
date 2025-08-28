@@ -46,7 +46,9 @@ try:
     print("Total ::", count, shape)
 
     if len(repair_nodes) > 0:
+        print()
         print("-----------------------------------\n      Nodes in Repair\n-----------------------------------")
+        print()
         for i in repair_nodes:
             print(i)
 
