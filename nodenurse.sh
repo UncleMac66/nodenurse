@@ -65,9 +65,9 @@ Notes:
 HELP_BRIEF="
 usage: ./nodenurse.sh [-c, healthcheck] [-l, latest] [-r, reboot]
                       [-i, identify] [-t, tag] [-n, nccl] [ -v, validate ]
-            		      [-s, ncclscout] [-u, update] [-e, exec]
-		                  [captop] [setuptag] [remove]
-		                  [-h, --help, help] 
+ 		      [-s, ncclscout] [-u, update] [-e, exec]
+		      [captop] [setuptag] [remove]
+		      [-h, --help, help] 
 
 Arguments: {HOST(S),HOSTFILE,--all,--idle,--drain,--down,
             --alldown,--partition <name>, --quiet}
