@@ -931,11 +931,11 @@ if [[ $ntype == nccl ]]; then
 
       for j in $jobids
       do
-        jobstate=`sacct -j "$j" -n -o "JobID,State" | grep -w "$j" | awk '{print $2}'`
+        jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
 
     	while [[ $jobstate != "COMPLETED" ]]
       	do
-          jobstate=`sacct -j "$j" -n -o "JobID,State" | grep -w "$j" | awk '{print $2}'`
+          jobstate=`sacct -j "$j" -n -o "JobID,State" | grep "$j " | awk '{print $2}'`
   	      sleep .25
       	  echo -ne "\r |                          "
       	  sleep .25
