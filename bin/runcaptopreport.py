@@ -47,7 +47,7 @@ try:
 
     if len(repair_nodes) > 0:
         print()
-        print("----------------------\n   Nodes in Repair\n----------------------")
+        print("----------------------\n    Nodes in Repair\n----------------------")
         for i in repair_nodes:
             print(i)
 
