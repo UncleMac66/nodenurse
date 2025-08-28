@@ -1341,8 +1341,8 @@ if [[ $ntype == fwcheck ]]; then
   echo -e "Grouped VBIOS Versions:"
   for version in "${!vbios_groups[@]}"; do
       echo -e "\n----------------------------------------------------------------"  
-      echo "VBIOS Version: $version"
-      echo -e "\n${vbios_groups[$version]}"
+      echo -e "VBIOS Version: $version\n"
+      echo -e "${vbios_groups[$version]}" | fold -s -w 65
       echo -e "----------------------------------------------------------------\n"  
       done
 
