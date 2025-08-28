@@ -950,7 +950,7 @@ if [[ $ntype == nccl ]]; then
   	        break
   	      fi
   	      if [[ $timetowait -gt 90 ]]; then
-  	        warn "Timed out waiting for nccl Job $j."
+  	        warn "\nTimed out waiting for nccl Job $j."
   	        output=false
       	    break
       	  fi
