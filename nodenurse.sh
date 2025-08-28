@@ -41,7 +41,7 @@ HOST(S)                  An input hostfile, or space separated list of hostnames
   --partition,-p <name>  Use all nodes in a specified slurm partition name (i.e. compute).
 
   --quiet                Remove confirmations and warnings to allow for running without user input
-                         (Only works on options that don't explicitly ask for details)
+                         (Only works on options that don't explicitly ask for options like reboot)
 
 Examples:
   $0 healthcheck <path/to/hostfile>    runs a fresh healthcheck on the node(s) in the provided hostlist.
@@ -62,11 +62,12 @@ Notes:
   - nodenurse.sh deduplicates your provided hostlist.
 "
 
-HELP_BRIEF="usage: $0 [-c, healthcheck] [-l, latest] [-r, reboot]
+HELP_BRIEF="
+usage: ./nodenurse.sh [-c, healthcheck] [-l, latest] [-r, reboot]
                       [-i, identify] [-t, tag] [-n, nccl] [ -v, validate ]
-		      [-s, ncclscout] [-u, update] [-e, exec]
-		      [captop] [setuptag] [remove]
-		      [-h, --help, help] 
+            		      [-s, ncclscout] [-u, update] [-e, exec]
+		                  [captop] [setuptag] [remove]
+		                  [-h, --help, help] 
 
 Arguments: {HOST(S),HOSTFILE,--all,--idle,--drain,--down,
             --alldown,--partition <name>, --quiet}
@@ -950,7 +951,8 @@ if [[ $ntype == nccl ]]; then
   	        break
   	      fi
   	      if [[ $timetowait -gt 90 ]]; then
-  	        warn "\nTimed out waiting for nccl Job $j."
+            echo "" 
+  	        warn "Timed out waiting for nccl Job $j."
   	        output=false
       	    break
       	  fi
