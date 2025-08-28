@@ -36,7 +36,7 @@ try:
                 status="RUNNING"
             else:
                 status="IN_REPAIR"
-                repair_nodes.append({ "id":node.id })
+                repair_nodes.append(node.id)
 
         if status in state_counts.keys():
             state_counts[status]+=1
