@@ -1330,7 +1330,7 @@ if [[ $ntype == fwcheck ]]; then
 
   # Read the results and group nodes by VBIOS version
   while read -r line; do
-      node=$(echo "$line" | awk '{print $1}')
+      node=$(echo "$line" | awk '{print $1}'| sed 's/:$//')
       version=$(echo "$line" | awk '{print $3}')
     
       # Append the node to the corresponding VBIOS version group
@@ -1338,12 +1338,14 @@ if [[ $ntype == fwcheck ]]; then
   done < "$fwresults_tmp"
 
   # Output the grouped results
-  echo -e "\nGrouped VBIOS Versions:\n"
+  echo -e "Grouped VBIOS Versions:"
   for version in "${!vbios_groups[@]}"; do
+      echo -e "\n----------------------------------------------------------------"  
       echo "VBIOS Version: $version"
-      echo "Nodes: ${vbios_groups[$version]}"
-      echo "-------------------------"
-  done
+      echo -e "\n${vbios_groups[$version]}"
+      echo -e "----------------------------------------------------------------\n"  
+      done
+
 
 
   cleanup
