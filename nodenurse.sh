@@ -22,6 +22,7 @@ Options:
   -v, validate         Run nodes through checks to ensure ansible scripts will work.
   captop               Run a report on capacity topology if tenancy is enabled for it
   remove               Generate the resize command to remove the given node(s)
+  fwcheck              Run a nvidia firmware check on the node(s) (helpful for gpu bus issues)
 
 Arguments:
 HOST(S)                  An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2) or slurm notation like gpu-[1,2,5-6].
@@ -66,7 +67,7 @@ HELP_BRIEF="
 usage: ./nodenurse.sh [-c, healthcheck] [-l, latest] [-r, reboot]
                       [-i, identify] [-t, tag] [-n, nccl] [ -v, validate ]
  		      [-s, ncclscout] [-u, update] [-e, exec]
-		      [captop] [setuptag] [remove]
+		      [captop] [setuptag] [remove] [fwcheck]
 		      [-h, --help, help] 
 
 Arguments: {HOST(S),HOSTFILE,--all,--idle,--drain,--down,
@@ -187,6 +188,10 @@ elif [[ $1 == "captop" ]]; then
 elif [[ $1 == "remove" ]]; then
     ntype=remove
     echo -e "\nRemove Mode...\n"
+
+elif [[ $1 == "fwcheck" ]]; then
+    ntype=fwcheck
+    echo -e "\nFirmware Check Mode...\n"
 
 elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]] || [[ $1 == "help" ]]; then
     echo "$HELP_MESSAGE"
@@ -522,7 +527,7 @@ check_shape() {
     shapes=$(pdsh -N -S -R ssh -t 5 -w "$nodes" "curl -sH \"Authorization: Bearer Oracle\" -L http://169.254.169.254/opc/v2/instance/ | jq -r .shape")
 
     if [ $? -gt 0 ]; then
-      echo -e "${RED}ERROR:${NC} There are node(s) that are inaccessable via ssh.\n"
+      error "There are node(s) that are inaccessable via ssh."
       exit 1
     fi
 
@@ -530,8 +535,7 @@ check_shape() {
     shapes=`echo $shapes | tr " " "\n" | sort -u | tr "\n" " "`
 
     if [ $(echo $shapes | wc -w) -gt 1 ]; then
-	echo -e "${RED}ERROR:${NC} There are multiple types of shapes in this hostlist\n"
-	exit 1
+	    error "There are multiple types of shapes in this hostlist"
     fi
 
     shapes=$(echo $shapes | awk -F '.' '{print $3}')
@@ -1303,5 +1307,49 @@ if [[ $ntype == remove ]]; then
 	echo -e "/opt/oci-hpc/bin/resize.sh remove --nodes $remove_nodes $remove_cluster\n"
 
 	cleanup
+
+fi
+
+
+if [[ $ntype == fwcheck ]]; then
+
+  display_nodes
+  # Temporary file to store results
+  fwresults_tmp="fwresults.tmp"
+  > "$fwresults_tmp"  # Clear the temporary file
+  vbios_cmd="nvidia-smi -q | grep -i VBIOS | sort -u | awk '{print \$1\" \"\$4}'"
+  echo -e "Gathering firmware data from nodes...\n"
+
+  pdsh -S -t 5 -R ssh -w "$nodes" "$vbios_cmd" >> "$fwresults_tmp"
+
+  if [ $? -gt 0 ]; then
+    warn "There are node(s) that are inaccessable via ssh or don't have a working nvidia-smi. Results may be incomplete."
+  fi
+  # Declare an associative array to group nodes by VBIOS version
+  declare -A vbios_groups
+
+  # Read the results and group nodes by VBIOS version
+  while read -r line; do
+      node=$(echo "$line" | awk '{print $1}'| sed 's/:$//')
+      version=$(echo "$line" | awk '{print $3}')
+    
+      # Append the node to the corresponding VBIOS version group
+      vbios_groups["$version"]+="$node "
+  done < "$fwresults_tmp"
+
+  # Output the grouped results
+  echo -e "Grouped VBIOS Versions:"
+  for version in "${!vbios_groups[@]}"; do
+      vbiosnodecount=$(echo "${vbios_groups[$version]}" | wc -w)
+      vbiosnodes=$(echo -e "${vbios_groups[$version]}")
+      echo -e "\n----------------------------------------------------------------"  
+      echo -e "VBIOS Version: $version\n"
+      echo -e "Number of nodes with this version: $vbiosnodecount\n"
+      echo -e "Nodes with this version:\n"
+      scontrol show hostlistsorted "$vbiosnodes"  
+      echo -e "----------------------------------------------------------------\n"  
+  done
+
+  cleanup
 
 fi
