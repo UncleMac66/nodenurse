@@ -168,7 +168,7 @@ Resize command:
 ```
 or
 ```
-ubuntu@iad-h100-controller:~/ms/nodenurse$ ./nodenurse.sh -c -q -p compute
+$ ./nodenurse.sh -c -q -p compute
 
 Fresh Healthcheck Mode...
 
