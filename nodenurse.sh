@@ -1348,9 +1348,7 @@ if [[ $ntype == fwcheck ]]; then
       echo -e "Nodes with this version:\n"
       scontrol show hostlistsorted "$vbiosnodes"  
       echo -e "----------------------------------------------------------------\n"  
-      done
-
-
+  done
 
   cleanup
 
