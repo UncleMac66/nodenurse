@@ -1340,9 +1340,13 @@ if [[ $ntype == fwcheck ]]; then
   # Output the grouped results
   echo -e "Grouped VBIOS Versions:"
   for version in "${!vbios_groups[@]}"; do
+      vbiosnodecount=$(echo "${vbios_groups[$version]}" | wc -w)
+      vbiosnodes=$(echo -e "${vbios_groups[$version]}")
       echo -e "\n----------------------------------------------------------------"  
       echo -e "VBIOS Version: $version\n"
-      echo -e "${vbios_groups[$version]}" | scontrol show hostlistsorted 
+      echo -e "Number of nodes with this version: $vbiosnodecount\n"
+      echo -e "Nodes with this version:"
+      scontrol show hostlistsorted "$vbiosnodes"  
       echo -e "----------------------------------------------------------------\n"  
       done
 
