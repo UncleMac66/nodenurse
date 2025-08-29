@@ -1342,7 +1342,7 @@ if [[ $ntype == fwcheck ]]; then
   for version in "${!vbios_groups[@]}"; do
       echo -e "\n----------------------------------------------------------------"  
       echo -e "VBIOS Version: $version\n"
-      echo -e "${vbios_groups[$version]}" | sort -t '-' -k 2,2n | fold -s -w 65
+      echo -e "${vbios_groups[$version]}" | scontrol show hostlistsorted 
       echo -e "----------------------------------------------------------------\n"  
       done
 
