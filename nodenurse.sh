@@ -1317,13 +1317,13 @@ if [[ $ntype == fwcheck ]]; then
   # Temporary file to store results
   fwresults_tmp="fwresults.tmp"
   > "$fwresults_tmp"  # Clear the temporary file
-  vbios_cmd="nvidia-smi -q | grep -i VBIOS | awk '{print \$1\" \"\$4}'"
+  vbios_cmd="nvidia-smi -q | grep -i VBIOS | sort -u | awk '{print \$1\" \"\$4}'"
   echo -e "Gathering firmware data from nodes...\n"
 
   pdsh -S -t 5 -R ssh -w "$nodes" "$vbios_cmd" >> "$fwresults_tmp"
 
   if [ $? -gt 0 ]; then
-    warn "There are node(s) that are inaccessable via ssh or don't have a working nvidia-smi"
+    warn "There are node(s) that are inaccessable via ssh or don't have a working nvidia-smi. Results may be incomplete."
   fi
   # Declare an associative array to group nodes by VBIOS version
   declare -A vbios_groups
