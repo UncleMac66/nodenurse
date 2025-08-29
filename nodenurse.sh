@@ -1345,7 +1345,7 @@ if [[ $ntype == fwcheck ]]; then
       echo -e "\n----------------------------------------------------------------"  
       echo -e "VBIOS Version: $version\n"
       echo -e "Number of nodes with this version: $vbiosnodecount\n"
-      echo -e "Nodes with this version:"
+      echo -e "Nodes with this version:\n"
       scontrol show hostlistsorted "$vbiosnodes"  
       echo -e "----------------------------------------------------------------\n"  
       done
