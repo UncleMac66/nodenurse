@@ -41,7 +41,7 @@ HOST(S)                  An input hostfile, or space separated list of hostnames
 
   --partition,-p <name>  Use all nodes in a specified slurm partition name (i.e. compute).
 
-  --quiet,-q                Remove confirmations and warnings to allow for running without user input
+  --quiet,-q             Remove confirmations and warnings to allow for running without user input
                          (Only works on options that don't explicitly ask for options like reboot)
 
 Examples:
@@ -324,13 +324,13 @@ while [[ $# -gt 0 ]]; do
         elif [[ "$1" =~ \[.*\] ]]; then
           # nodes are in slurm format
 	        nodes=$(scontrol show hostname $1 | tr "\n" " ")
+          shift
         else
           # arg is/are manually entered hostname(s)
           for arg in "${@:1}"; do
             nodes+="$arg "
           done
           echo -e "Hostname(s) provided manually...\n"
-      	  shift
       	fi
 	      shift
       ;;
