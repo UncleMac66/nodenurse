@@ -20,7 +20,7 @@ import itertools
 
 # Define supported GPU shapes and their NCCL parameters
 GPU_SHAPES = {
-    "A100": {"shapes": ["BM.GPU4.8", "BM.GPU.B4.8", "BM.GPU.A100-v2.8"], "threshold": 185.0, "script": "/opt/oci-hpc/samples/gpu/nccl_run_allreduce.sh"},
+    "A100": {"shapes": ["BM.GPU4.8", "BM.GPU.B4.8", "BM.GPU.A100-v2.8"], "threshold": 165.0, "script": "/opt/oci-hpc/samples/gpu/nccl_run_allreduce.sh"},
     "H100": {"shapes": ["BM.GPU.H100.8"], "threshold": 440.0, "script": "/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sh"},
     "H200": {"shapes": ["BM.GPU.H200.8"], "threshold": 440.0, "script": "/opt/oci-hpc/samples/gpu/nccl_run_allreduce_H100_200.sh"}
 }
