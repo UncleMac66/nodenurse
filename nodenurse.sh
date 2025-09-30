@@ -602,7 +602,7 @@ execute(){
       done
     else
       echo -e "\n----------------------------------------------------------------" 
-      echo -e "Output from nodes: ${YELLOW}$nodes${NC}" | fold -s -w 65
+      echo -e "Output from nodes: ${YELLOW}$(scontrol show hostlistsorted "$nodes")${NC}"
       echo -e "----------------------------------------------------------------\n" 
       pdsh -S -R ssh -t 5 -w "$nodes" "$cmd"
       returnval=$?
@@ -1233,9 +1233,9 @@ if [[ $ntype == validate ]]; then
 #      done
 
       echo -e "Nodes that are ok (`echo $oknodes | wc -w`):"
-      echo -e "${GREEN}`echo $oknodes | tr "\n" " " | fold -s -w 65`${NC}"
+      echo -e "${GREEN}`scontrol show hostlistsorted "$oknodes"`${NC}"
       echo -e "\nNodes that have potential issues (`echo $retestnodes | wc -w`):"
-      echo -e "${RED}`echo $retestnodes | tr " " "\n"`${NC}"
+      echo -e "${RED}`scontrol show hostlistsorted "$retestnodes"`${NC}"
       echo $retestnodes | tr " " "\n" > hostfiles/$date-validate-badnodes
       echo -e "\nHostlist of trouble nodes saved at hostfiles/$date-validate-badnodes"
     else
