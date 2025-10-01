@@ -723,7 +723,6 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
     # Initialize the node count and display node details
     display_nodes
-    downloadhc
 
     # Prompt user for parallelism if running fresh healthcheck and number of nodes is greater than 2 otherwise just run sequentially
     if [[ $numnodes -gt 2 ]] && [[ $ntype == healthfresh ]]; then
