@@ -619,7 +619,6 @@ execute(){
 
 }
 
-
 # Function displays the list of hosts along with relevant information, checking for nodes that can't be ssh'd or are in an allocated state in slurm
 display_nodes(){
 
@@ -710,42 +709,6 @@ display_nodes(){
 
 }
 
-downloadhc(){
-
-
-# Base URL for the GitHub raw files
-BASE_URL="https://raw.githubusercontent.com/oracle-quickstart/oci-hpc/master/playbooks/roles/healthchecks/files"
-
-# List of files to download
-FILES=(
-    "check_gpu_setup.py"
-    "gpu_bw_test.py"
-    "rdma_link_flapping.py"
-    "shared_logging.py"
-    "xid_checker.py"
-)
-
-DOWNLOAD_DIR="$BIN_FOLDER/healthcheck"
-
-# Create the directory if it doesn't exist
-if [ ! -d "$DOWNLOAD_DIR" ]; then
-  mkdir -p "$DOWNLOAD_DIR"
-fi
-
-# rm $DOWNLOAD_DIR/*.py
-# Download each file if it doesn't already exist
-for FILE in "${FILES[@]}"; do
-    FILE_PATH="$DOWNLOAD_DIR/$FILE"
-
-    if [ ! -f "$FILE_PATH" ]; then
-        wget -q "$BASE_URL/$FILE" -P "$DOWNLOAD_DIR" > /dev/null 2>&1
-    fi
-
-done
-
-
-}
-
 # Main Function for --identify
 if [ $ntype == idnodes ]; then
 
@@ -779,7 +742,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 
       # if fresh or latest
       if [[ $ntype == healthfresh ]]; then
-        execute sudo python3 $BIN_FOLDER/healthcheck/check_gpu_setup.py || { goodhealth=false;echo -e "${RED}ERROR:${NC} Healthcheck for node $n failed. Ensure that node exists and can accept ssh"; }
+        execute sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py || { goodhealth=false;echo -e "${RED}ERROR:${NC} Healthcheck for node $n failed. Ensure that node exists and can accept ssh"; }
       else
         execute cat /tmp/latest_healthcheck.log || { goodhealth=false;echo -e "${RED}ERROR:${NC} Gathering the latest healthcheck for node $n failed."; echo "       Ensure that healthchecks are enabled on the cluster"; }
       fi
@@ -787,7 +750,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
     else
       # otherwise run healthchecks in parallel
       echo -e "\nNote: To keep output brief, only reporting on errors and warnings"
-      execute -p sudo python3 $BIN_FOLDER/healthcheck/check_gpu_setup.py -l ERROR -l WARNING || goodhealth=false
+      execute -p sudo python3 /opt/oci-hpc/healthchecks/check_gpu_setup.py -l ERROR -l WARNING || goodhealth=false
     fi # End serial/parallel healthchecks 
 
     # If successful then output a good completion status, if errors present then inform user
