@@ -61,6 +61,7 @@ Options:
   captop               Run a report on capacity topology if tenancy is enabled for it
   remove               Generate the resize command to remove the given node(s)
   fwcheck              Run a nvidia firmware check on the node(s) (helpful for gpu bus issues)
+  --version            Display the current version and exit.
 
 Arguments:
 HOST(S)                  An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2) or slurm notation like gpu-[1,2,5-6].

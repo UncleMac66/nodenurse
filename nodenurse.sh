@@ -23,6 +23,7 @@ Options:
   captop               Run a report on capacity topology if tenancy is enabled for it
   remove               Generate the resize command to remove the given node(s)
   fwcheck              Run a nvidia firmware check on the node(s) (helpful for gpu bus issues)
+  --version            Display the current version and exit.
 
 Arguments:
 HOST(S)                  An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2) or slurm notation like gpu-[1,2,5-6].
@@ -77,6 +78,7 @@ examples: ./nodenurse.sh healthcheck gpu-123
           ./nodenurse.sh reboot --idle
 	  ./nodenurse.sh validate --partition compute
 " 
+NN_VERSION="2.11.3-10.01.2025"
 
 # Check if an argument is passed
 if [ -z "$1" ]; then
@@ -192,6 +194,10 @@ elif [[ $1 == "remove" ]]; then
 elif [[ $1 == "fwcheck" ]]; then
     ntype=fwcheck
     echo -e "\nFirmware Check Mode...\n"
+
+elif [[ $1 == "--version" ]]; then
+    echo -e "\nNodenurse Version: $NN_VERSION\n"
+    exit 0
 
 elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]] || [[ $1 == "help" ]]; then
     echo "$HELP_MESSAGE"
