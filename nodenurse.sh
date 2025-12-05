@@ -138,105 +138,51 @@ error(){
     exit 1
 }
 
-# Check first argument to grab function or exit if no valid option is provided
-if [[ $1 == "-c" ]] || [[ $1 == "healthcheck" ]]; then
-    ntype=healthfresh
-    echo -e "\nFresh Healthcheck Mode...\n"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -c|healthcheck) ntype=healthfresh; echo -e "\nFresh Healthcheck Mode..."; shift;break;;
+        -l|latest) ntype=healthlatest; echo -e "\nLatest Healthcheck Mode..."; shift;break;;
+        -r|reboot) ntype=rebootall; echo -e "\nReboot Mode..."; shift;break;;
+        -i|identify) ntype=idnodes; echo -e "\nIdentify Mode..."; shift;break;;
+        -t|--tag|tag) ntype=tag; echo -e "\nTagging Mode..."; shift;break;;
+        setuptag) ntype=setuptag; echo -e "\nSetup tagging...\n"; shift;break;;
+        -n|nccl) ntype=nccl; echo -e "\nFull NCCL Mode..."; shift;break;;
+        -s|ncclscout) ntype=ncclscout; echo -e "\nncclscout Mode..."; shift;break;;
+        -u|update) ntype=update; echo -e "\nUpdate Mode..."; shift;break;;
+        -e|exec) ntype=exec; echo -e "\nRemote exec Mode..."; shift;break;;
+        -v|validate) ntype=validate; echo -e "\nValidate Mode..."; shift;break;;
+        captop) ntype=captop; echo -e "\nCapacity Topology Mode..."; shift;break;;
+        remove) ntype=remove; echo -e "\nRemove Mode...";shift;break;;
+        fwcheck) ntype=fwcheck; echo -e "\nFirmware Check Mode...";shift;break;;
+        -q|--quiet) quietmode=true; echo -e "\nQuiet mode activated"; shift;;
+        -h|--help) echo "$HELP_MESSAGE"; exit 0;;
+        --version) echo -e "\nNodenurse Version: $NN_VERSION\n"; exit 0;;
+        *) 
+            if [ "${1:0:1}" == "-" ]; then
+                echo -e "Unknown argument '$1', ignoring...\n"
+                shift
+            else
+                break
+            fi
+            ;;
+    esac
+done
 
-elif [[ $1 == "-l" ]] || [[ $1 == "latest" ]]; then
-    ntype=healthlatest
-    echo -e "\nLatest Healthcheck Mode...\n"
-
-elif [[ $1 == "-r" ]] || [[ $1 == "reboot" ]]; then
-    ntype=rebootall
-    echo -e "\nReboot Mode...\n"
-
-elif [[ $1 == "-i" ]] || [[ $1 == "identify" ]]; then
-    ntype=idnodes
-    echo -e "\nIdentify Mode...\n"
-
-elif [[ $1 == "-t" ]] || [[ $1 == "tag" ]]; then
-    ntype=tag
-    echo -e "\nTagging Mode...\n"
-
-elif [[ $1 == "-n" ]] || [[ $1 == "nccl" ]]; then
-    ntype=nccl
-    echo -e "\nFull NCCL Mode...\n"
-
-elif [[ $1 == "-s" ]] || [[ $1 == "ncclscout" ]]; then
-    ntype=ncclscout
-    echo -e "\nncclscout Mode...\n"
-
-elif [[ $1 == "-u" ]] || [[ $1 == "update" ]]; then
-    ntype=update
-    echo -e "\nUpdate Mode...\n"
-
-elif [[ $1 == "-e" ]] || [[ $1 == "exec" ]]; then
-    ntype=exec
-    echo -e "\nRemote exec Mode...\n"
-
-elif [[ $1 == "-v" ]] || [[ $1 == "validate" ]]; then
-    ntype=validate
-    echo -e "\nValidate Mode...\n"
-
-elif [[ $1 == "setuptag" ]]; then
-    ntype=setuptag
-    echo -e "\nSetup Tagging Mode...\n"
-
-elif [[ $1 == "captop" ]]; then
-    ntype=captop
-    echo -e "\nCapacity Topology Mode...\n"
-
-elif [[ $1 == "remove" ]]; then
-    ntype=remove
-    echo -e "\nRemove Mode...\n"
-
-elif [[ $1 == "fwcheck" ]]; then
-    ntype=fwcheck
-    echo -e "\nFirmware Check Mode...\n"
-
-elif [[ $1 == "--version" ]]; then
-    echo -e "\nNodenurse Version: $NN_VERSION\n"
-    exit 0
-
-elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]] || [[ $1 == "help" ]]; then
-    echo "$HELP_MESSAGE"
-    exit 0
-
-else
+# Check if ntype is set
+if [ -z "$ntype" ]; then
     echo "$HELP_BRIEF"
-    echo -e "\nUnknown option '$1' Please try again\n"
     exit 1
-
-fi # End option check
+fi
 
 
 # Host/hostfile Input
-# If a second argument is passed, assume its a nodename or a hostfile. If no second argument is passed check if a slurm state flag is passed 
-shift
 while [[ $# -gt 0 ]]; do
-
-    if [ -f "$1" ]; then
-
-      # arg is a hostfile
-      echo -e "\nReading from provided hostfile...\n"
-      for i in $(cat "$1")
-      do
-        nodes+="$i "
-      done
-      shift
-    elif [ -z "$1" ]; then
-      # no argument provided so ask for a slurm status
-      echo -e "\nNo hosts provided.\n\nPlease provide hosts manually, or specify a slurm status (i.e. --idle, --down, --drain, --all)\n"
-      shift
-    fi
-
 # Argument switch
     case "$1" in 
 
       --quiet|-q)
         if [[ $quietmode == "false" ]] ; then
-	        echo -e "Quiet mode activated\n"
+	        echo -e "Quiet mode activated"
 	        quietmode=true
         fi
 	      shift
@@ -331,16 +277,27 @@ while [[ $# -gt 0 ]]; do
           # nodes are in slurm format
 	        nodes=$(scontrol show hostname $1 | tr "\n" " ")
           shift
-        else
+        elif [ -f "$1" ]; then
+          # arg is a hostfile
+          echo -e "\nReading from provided hostfile...\n"
+          for i in $(cat "$1")
+          do
+            nodes+="$i "
+          done
+          shift
+        else 
           # arg is/are manually entered hostname(s)
           for arg in "${@:1}"; do
+            # check if there's more flags passed
+            if [ "${arg:0:1}" == "-" ] || [ "${arg:0:2}" == "--" ]; then
+              echo -e "Unknown hostname '$arg', ignoring...\n"
+              shift
+            fi
             nodes+="$arg "
           done
-          echo -e "Hostname(s) provided manually...\n"
-      	fi
-	      shift
+	        shift
+        fi
       ;;
-
   esac
 done
 
@@ -431,7 +388,7 @@ confirm(){
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's instance name in the OCI console
 generate_instance_name() {
-    inst=`cat /etc/hosts | grep -w "$1" | grep .local.vcn | awk '{print $4}'`
+    inst=`cat /etc/hosts | grep -w "$1 " | grep .local.vcn | awk '{print $4}'`
     if [ -z $inst ]; then
       echo -e "Not Found"
     else

@@ -3,3 +3,4 @@ logs/*
 tmp_*
 nccl_tests/*
 bin/healthcheck/*
+test_*
