@@ -174,7 +174,7 @@ fi
 while [[ $# -gt 0 ]]; do
 # Argument switch
     case "$1" in 
-      --quiet|-q)
+      --quiet)
         if [[ $quietmode == "false" ]] ; then
 	        echo -e "Quiet mode activated..."
 	        quietmode=true
@@ -191,7 +191,7 @@ while [[ $# -gt 0 ]]; do
         shift 2
       ;;
 
-      -a|--all)
+      --all)
         if [ -z "$gatherstate" ]; then
 	        echo -e "Filtering all hosts from slurm..."
 	        gatherstate="-t all"
@@ -227,7 +227,7 @@ while [[ $# -gt 0 ]]; do
 	      fi
 	    ;;
 
-      -dd|--alldown)
+      --alldown)
         if [ -z "$gatherstate" ]; then
           echo -e "Filtering hosts from slurm marked as 'down' and 'drain'..."
 	        gatherstate="-t drain,down"
