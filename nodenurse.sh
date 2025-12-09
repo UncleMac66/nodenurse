@@ -391,7 +391,7 @@ confirm(){
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's instance name in the OCI console
 generate_instance_name() {
-    inst=`cat /etc/hosts | grep -w "$1 " | grep .local.vcn | awk '{print $4}'`
+    inst=`grep "$1 " /etc/hosts | grep local.vcn | awk '{print $4}'`
     if [ -z $inst ]; then
       echo -e "Not Found"
     else
