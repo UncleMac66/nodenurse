@@ -28,7 +28,7 @@ Options:
 Arguments:
 HOST(S)                  An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2) or slurm notation like gpu-[1,2,5-6].
 
-  --all,-a               Use all hosts that are listed in slurm.
+  --all                  Use all hosts that are listed in slurm.
 
   --idle                 Use hosts that are in a 'idle' state in slurm.
 
@@ -42,7 +42,7 @@ HOST(S)                  An input hostfile, or space separated list of hostnames
 
   --partition,-p <name>  Use all nodes in a specified slurm partition name (i.e. compute).
 
-  --quiet,-q             Remove confirmations and warnings to allow for running without user input
+  --quiet                Remove confirmations and warnings to allow for running without user input
                          (Only works on options that don't explicitly ask for options like reboot)
 
 Examples:
@@ -168,7 +168,6 @@ if [ -z "$ntype" ]; then
     error "No option given, nothing to do...\n\nHint: './nodenurse.sh --help' for more details"
     exit 1
 fi
-
 
 # Host/hostfile Input
 while [[ $# -gt 0 ]]; do
