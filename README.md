@@ -39,7 +39,7 @@ git pull
 ### Help Page and Examples
 
 >[!Warning]
->Nodenurse is designed to run as the ubuntu or privledeged user on the Controller node of an OCI HPC Slurm Stack. Running it elsewhere, like the login node or the HPC nodes themselves can lead to errors and strange results.
+>Nodenurse is designed to run as the ubuntu or privileged  user on the Controller node of an OCI HPC Slurm Stack. Running it elsewhere, like the login node or the HPC nodes themselves can lead to errors and strange results.
 
 ```
 Usage: ./nodenurse.sh [OPTION] [ARGUMENT]
