@@ -154,7 +154,7 @@ while [[ $# -gt 0 ]]; do
         captop) ntype=captop; echo -e "\nCapacity Topology Mode..."; shift;break;;
         remove) ntype=remove; echo -e "\nRemove Mode...";shift;break;;
         fwcheck) ntype=fwcheck; echo -e "\nFirmware Check Mode...";shift;break;;
-        -q|--quiet) quietmode=true; echo -e "\nQuiet mode activated..."; shift;;
+        --quiet) quietmode=true; echo -e "\nQuiet mode activated..."; shift;;
         -h|--help) echo "$HELP_MESSAGE"; exit 0;;
         --version) echo -e "\nNodenurse Version: $NN_VERSION\n"; exit 0;;
         *) 

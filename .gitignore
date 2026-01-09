@@ -4,3 +4,4 @@ tmp_*
 nccl_tests/*
 bin/healthcheck/*
 test_*
+.vscode
