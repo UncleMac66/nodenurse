@@ -28,7 +28,7 @@ Options:
 Arguments:
 HOST(S)                  An input hostfile, or space separated list of hostnames (e.g. gpu-1 gpu-2) or slurm notation like gpu-[1,2,5-6].
 
-  --all,-a               Use all hosts that are listed in slurm.
+  --all                  Use all hosts that are listed in slurm.
 
   --idle                 Use hosts that are in a 'idle' state in slurm.
 
@@ -42,7 +42,7 @@ HOST(S)                  An input hostfile, or space separated list of hostnames
 
   --partition,-p <name>  Use all nodes in a specified slurm partition name (i.e. compute).
 
-  --quiet,-q             Remove confirmations and warnings to allow for running without user input
+  --quiet                Remove confirmations and warnings to allow for running without user input
                          (Only works on options that don't explicitly ask for options like reboot)
 
 Examples:
@@ -66,7 +66,7 @@ Notes:
 
 HELP_BRIEF="
 usage: ./nodenurse.sh [-c, healthcheck] [-l, latest] [-r, reboot]
-                      [-i, identify] [-t, tag] [-n, nccl] [ -v, validate ]
+                      [-i, identify] [-t, tag] [-n, nccl] [-v, validate]
  		      [-s, ncclscout] [-u, update] [-e, exec]
 		      [captop] [setuptag] [remove] [fwcheck]
 		      [-h, --help, help] 
@@ -78,7 +78,7 @@ examples: ./nodenurse.sh healthcheck gpu-123
           ./nodenurse.sh reboot --idle
 	  ./nodenurse.sh validate --partition compute
 " 
-NN_VERSION="2.11.3-10.01.2025"
+NN_VERSION="2.11.3-12.05.2025"
 
 # Check if an argument is passed
 if [ -z "$1" ]; then
@@ -132,111 +132,50 @@ warn(){
 error(){
 
     if [ -n "$1" ]; then
-      echo -e "${RED}ERROR:${NC} $1\n"
+      echo -e "\n${RED}ERROR:${NC} $1\n"
     fi
     echo -e "Exiting...\n"
     exit 1
 }
 
-# Check first argument to grab function or exit if no valid option is provided
-if [[ $1 == "-c" ]] || [[ $1 == "healthcheck" ]]; then
-    ntype=healthfresh
-    echo -e "\nFresh Healthcheck Mode...\n"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -c|healthcheck) ntype=healthfresh; echo -e "\nFresh Healthcheck Mode..."; shift;break;;
+        -l|latest) ntype=healthlatest; echo -e "\nLatest Healthcheck Mode..."; shift;break;;
+        -r|reboot) ntype=reboot; echo -e "\nReboot Mode..."; shift;break;;
+        -i|identify) ntype=identify; echo -e "\nIdentify Mode..."; shift;break;;
+        -t|--tag|tag) ntype=tag; echo -e "\nTagging Mode..."; shift;break;;
+        setuptag) ntype=setuptag; echo -e "\nSetup tagging...\n"; shift;break;;
+        -n|nccl) ntype=nccl; echo -e "\nFull NCCL Mode..."; shift;break;;
+        -s|ncclscout) ntype=ncclscout; echo -e "\nncclscout Mode..."; shift;break;;
+        -u|update) ntype=update; echo -e "\nUpdate Mode..."; shift;break;;
+        -e|exec) ntype=exec; echo -e "\nRemote exec Mode..."; shift;break;;
+        -v|validate) ntype=validate; echo -e "\nValidate Mode..."; shift;break;;
+        captop) ntype=captop; echo -e "\nCapacity Topology Mode..."; shift;break;;
+        remove) ntype=remove; echo -e "\nRemove Mode...";shift;break;;
+        fwcheck) ntype=fwcheck; echo -e "\nFirmware Check Mode...";shift;break;;
+        --quiet) quietmode=true; echo -e "\nQuiet mode activated..."; shift;;
+        -h|--help) echo "$HELP_MESSAGE"; exit 0;;
+        --version) echo -e "\nNodenurse Version: $NN_VERSION\n"; exit 0;;
+        *) 
+          error "Unknown Option '$1'"
+        ;;
+    esac
+done
 
-elif [[ $1 == "-l" ]] || [[ $1 == "latest" ]]; then
-    ntype=healthlatest
-    echo -e "\nLatest Healthcheck Mode...\n"
-
-elif [[ $1 == "-r" ]] || [[ $1 == "reboot" ]]; then
-    ntype=rebootall
-    echo -e "\nReboot Mode...\n"
-
-elif [[ $1 == "-i" ]] || [[ $1 == "identify" ]]; then
-    ntype=idnodes
-    echo -e "\nIdentify Mode...\n"
-
-elif [[ $1 == "-t" ]] || [[ $1 == "tag" ]]; then
-    ntype=tag
-    echo -e "\nTagging Mode...\n"
-
-elif [[ $1 == "-n" ]] || [[ $1 == "nccl" ]]; then
-    ntype=nccl
-    echo -e "\nFull NCCL Mode...\n"
-
-elif [[ $1 == "-s" ]] || [[ $1 == "ncclscout" ]]; then
-    ntype=ncclscout
-    echo -e "\nncclscout Mode...\n"
-
-elif [[ $1 == "-u" ]] || [[ $1 == "update" ]]; then
-    ntype=update
-    echo -e "\nUpdate Mode...\n"
-
-elif [[ $1 == "-e" ]] || [[ $1 == "exec" ]]; then
-    ntype=exec
-    echo -e "\nRemote exec Mode...\n"
-
-elif [[ $1 == "-v" ]] || [[ $1 == "validate" ]]; then
-    ntype=validate
-    echo -e "\nValidate Mode...\n"
-
-elif [[ $1 == "setuptag" ]]; then
-    ntype=setuptag
-    echo -e "\nSetup Tagging Mode...\n"
-
-elif [[ $1 == "captop" ]]; then
-    ntype=captop
-    echo -e "\nCapacity Topology Mode...\n"
-
-elif [[ $1 == "remove" ]]; then
-    ntype=remove
-    echo -e "\nRemove Mode...\n"
-
-elif [[ $1 == "fwcheck" ]]; then
-    ntype=fwcheck
-    echo -e "\nFirmware Check Mode...\n"
-
-elif [[ $1 == "--version" ]]; then
-    echo -e "\nNodenurse Version: $NN_VERSION\n"
-    exit 0
-
-elif [[ $1 == "-h" ]] || [[ $1 == "--help" ]] || [[ $1 == "help" ]]; then
-    echo "$HELP_MESSAGE"
-    exit 0
-
-else
-    echo "$HELP_BRIEF"
-    echo -e "\nUnknown option '$1' Please try again\n"
+# Check if ntype is set
+if [ -z "$ntype" ]; then
+    error "No option given, nothing to do...\n\nHint: './nodenurse.sh --help' for more details"
     exit 1
-
-fi # End option check
-
+fi
 
 # Host/hostfile Input
-# If a second argument is passed, assume its a nodename or a hostfile. If no second argument is passed check if a slurm state flag is passed 
-shift
 while [[ $# -gt 0 ]]; do
-
-    if [ -f "$1" ]; then
-
-      # arg is a hostfile
-      echo -e "\nReading from provided hostfile...\n"
-      for i in $(cat "$1")
-      do
-        nodes+="$i "
-      done
-      shift
-    elif [ -z "$1" ]; then
-      # no argument provided so ask for a slurm status
-      echo -e "\nNo hosts provided.\n\nPlease provide hosts manually, or specify a slurm status (i.e. --idle, --down, --drain, --all)\n"
-      shift
-    fi
-
 # Argument switch
     case "$1" in 
-
-      --quiet|-q)
+      --quiet)
         if [[ $quietmode == "false" ]] ; then
-	        echo -e "Quiet mode activated\n"
+	        echo -e "Quiet mode activated..."
 	        quietmode=true
         fi
 	      shift
@@ -246,101 +185,115 @@ while [[ $# -gt 0 ]]; do
 	      if [[ $# -lt 2 ]] || [ "${2:0:1}" == "-" ]; then
 	        error "-p/--partition requires a specified partition. (i.e. '-p compute')"
         fi
-        echo -e "Filtering hosts from the $2 partition...\n"
+        echo -e "Filtering hosts from the $2 partition..."
         gatherpartition="-p $2"
         shift 2
       ;;
 
-      -a|--all)
+      --all)
         if [ -z "$gatherstate" ]; then
-	        echo -e "Filtering all hosts from slurm...\n"
+	        echo -e "Filtering all hosts from slurm..."
 	        gatherstate="-t all"
 	        gathername="--all"
           shift
         else
-	       echo -e "$gathername already given, ignoring $1...\n"
+	       echo -e "$gathername already given, ignoring $1..."
 	       shift
 	      fi
       ;;
 
       --down)
         if [ -z "$gatherstate" ]; then
-          echo -e "Filtering hosts from slurm marked as 'down'...\n"
+          echo -e "Filtering hosts from slurm marked as 'down'..."
 	          gatherstate="-t down"
 	          gathername="--down"
           shift
         else
-	        echo -e "$gathername already given, ignoring $1...\n"
+	        echo -e "$gathername already given, ignoring $1..."
 	        shift
       	fi
       ;;
 
       --drain)
         if [ -z "$gatherstate" ]; then
-          echo -e "Filtering hosts from slurm marked as 'drain'...\n"
+          echo -e "Filtering hosts from slurm marked as 'drain'..."
 	        gatherstate="-t drain"
 	        gathername="--drain"
       	  shift
         else
-	        echo -e "$gathername already given, ignoring $1...\n"
+	        echo -e "$gathername already given, ignoring $1..."
 	        shift
 	      fi
 	    ;;
 
-      -dd|--alldown)
+      --alldown)
         if [ -z "$gatherstate" ]; then
-          echo -e "Filtering hosts from slurm marked as 'down' and 'drain'...\n"
+          echo -e "Filtering hosts from slurm marked as 'down' and 'drain'..."
 	        gatherstate="-t drain,down"
 	        gathername="--alldown"
 	        shift
         else
-	        echo -e "$gathername already given, ignoring $1...\n"
+	        echo -e "$gathername already given, ignoring $1..."
 	        shift
       	fi
     	;;
 
       --idle)
         if [ -z "$gatherstate" ]; then
-          echo -e "Filtering hosts from slurm marked as 'idle'...\n"
+          echo -e "Filtering hosts from slurm marked as 'idle'..."
 	        gatherstate="idle"
       	  gathername="--idle"
       	  shift
         else
-      	  echo -e "$gathername already given, ignoring $1...\n"
+      	  echo -e "$gathername already given, ignoring $1..."
       	  shift
       	fi
     	;;
 
       --maint)
         if [ -z "$gatherstate" ]; then
-          echo -e "Filtering hosts from slurm marked as 'maint'...\n"
+          echo -e "Filtering hosts from slurm marked as 'maint'..."
        	  gatherstate="-t maint"
     	    gathername="--maint"
       	  shift
         else
-      	  echo -e "$gathername already given, ignoring $1...\n"
+      	  echo -e "$gathername already given, ignoring $1..."
       	  shift
       	fi
     	;;
 
+      -*|--*) 
+        if [ -n "$ntype" ]; then
+          error "'$1' requested but '$ntype' already set"
+        fi
+      ;;
+
       *)
-        if [ "${1:0:1}" == "-" ] || [ "${1:0:2}" == "--" ]; then
-          # arg is a mistyped flag so quit
-          echo -e "Unknown argument '$1', ignoring...\n"
+
+        if [ -n "$gatherstate" ]; then
+          # grouping flag already set so break out
+      	  echo -e "$gathername already given, ignoring $1..."
+          break
         elif [[ "$1" =~ \[.*\] ]]; then
           # nodes are in slurm format
 	        nodes=$(scontrol show hostname $1 | tr "\n" " ")
+          shift
+        elif [ -f "$1" ]; then
+          # arg is a hostfile
+          echo -e "Reading from provided hostfile..."
+          for i in $(cat "$1")
+          do
+            nodes+="$i "
+          done
           shift
         else
           # arg is/are manually entered hostname(s)
           for arg in "${@:1}"; do
             nodes+="$arg "
           done
-          echo -e "Hostname(s) provided manually...\n"
-      	fi
-	      shift
+	        shift
+        fi
       ;;
-
   esac
 done
 
@@ -359,9 +312,15 @@ nodes=$(echo $nodes | tr " " "\n" | sort -u | tr "\n" " " )
 # get number of nodes
 numnodes=$(echo $nodes | wc -w) 
 
+# Show helpful message if no nodes detected after argument parsing
+if [[ $numnodes -eq 0 ]] && [[ $ntype != "fwcheck" ]] && [[ $ntype != "setuptag" ]] && [[ $ntype != "captop" ]]; then
+  error "No nodes were detected from your input. Please supply a hostfile, hostnames, or valid group selection after the main command.\nFor Example: '$0 healthcheck gpu-1 gpu-2' or '$0 validate --all'."
+  exit 1
+fi
+
 # Get reservation ID if exists 
 for i in $nodes; do
-    activeres+="$(sinfo -h -o "%n %i" | grep ubuntu | grep "$i " | awk '{print $2}') "
+  activeres+="$(sinfo -h -o "%n %i" | grep ubuntu | grep "$i " | awk '{print $2}') "
 done
 
 # depuplicate active reservation
@@ -431,7 +390,7 @@ confirm(){
 
 # Function takes in a hostname (e.g. gpu-123) and returns it's instance name in the OCI console
 generate_instance_name() {
-    inst=`cat /etc/hosts | grep -w "$1" | grep .local.vcn | awk '{print $4}'`
+    inst=`grep "$1 " /etc/hosts | grep local.vcn | awk '{print $4}'`
     if [ -z $inst ]; then
       echo -e "Not Found"
     else
@@ -747,7 +706,7 @@ done
 }
 
 # Main Function for --identify
-if [ $ntype == idnodes ]; then
+if [ $ntype == identify ]; then
 
     # Just display the node information and exit
     display_nodes full
@@ -800,7 +759,7 @@ if [[ $ntype == healthfresh ]] || [[ $ntype == healthlatest ]]; then
 fi
 
 # Main function for --reboot
-if [ $ntype == rebootall ]; then
+if [ $ntype == reboot ]; then
 
     display_nodes
 
