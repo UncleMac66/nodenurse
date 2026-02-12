@@ -1,5 +1,5 @@
-# ./nodenurse.sh
-
+<img width="531" height="114" alt="ascii-art-text-NodeNurse" src="https://github.com/user-attachments/assets/a461b80f-0dbc-4a18-a817-2843ce70a12e" />
+                                                       
 Helper tool to test, diagnose, reboot, and tag unhealthy nodes in a slurm based GPU cluster. Specifically designed to work out of the box with GPU environments set up with [oci-hpc](https://github.com/oracle-quickstart/oci-hpc)
 
  It assists with:
